@@ -1,0 +1,130 @@
+name: release
+
+# Deploy a dbt model change through continuo's blue/green pipeline:
+# build+push the per-service images, compile+upload the manifests to S3, then
+# POST a release to continuo (the first run auto-bootstraps; see scripts/release.sh).
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'services/**'
+      - 'base/**'
+      - 'dbt_upload/**'
+      - 'targets.yaml'
+      - '.github/workflows/release.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: release-main
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    # Ephemeral Postgres for `dbt compile` (compile opens a connection but needs
+    # no data — it only resolves refs/jinja into manifest.json). User/db/password
+    # match the dbt profile defaults so no DBT_POSTGRES_* overrides are needed.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: continuo_svc
+          POSTGRES_PASSWORD: runner
+          POSTGRES_DB: continuo_dbt
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+
+    env:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Compute release identifiers
+        id: ids
+        run: |
+          SHA="$(git rev-parse --short HEAD)"
+          echo "tag=${SHA}" >> "$GITHUB_OUTPUT"
+          echo "release_id=rel-${SHA}-${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
+          # image_tags map for the POST body — all three services share this commit's tag.
+          echo "image_tags={\"service-1\":\"${SHA}\",\"service-2\":\"${SHA}\",\"service-3\":\"${SHA}\"}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # dbt-base is the shared base layer the service images build FROM. Push
+      # :latest so the per-service builds resolve it from the registry.
+      - name: Build and push dbt-base
+        uses: docker/build-push-action@v6
+        with:
+          context: base
+          push: true
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/dbt-base:latest
+          cache-from: type=gha,scope=dbt-base
+          cache-to: type=gha,mode=max,scope=dbt-base
+
+      - name: Build and push service images
+        run: |
+          for svc in service-1 service-2 service-3; do
+            docker buildx build \
+              --push \
+              -t "${DOCKERHUB_USERNAME}/${svc}:${{ steps.ids.outputs.tag }}" \
+              -t "${DOCKERHUB_USERNAME}/${svc}:latest" \
+              --cache-from "type=gha,scope=${svc}" \
+              --cache-to "type=gha,mode=max,scope=${svc}" \
+              "services/${svc}"
+          done
+
+      - name: Set up Python + dbt
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      # dbt is not a dbt_upload dependency (it ships in the dbt-base image); in CI
+      # install both into the same interpreter so `python -m dbt_upload` (which
+      # shells out to `dbt compile`) finds dbt on PATH.
+      - name: Install dbt + dbt_upload
+        run: |
+          pip install --no-cache-dir "dbt-core==1.12.0b1" "dbt-postgres==1.10.0"
+          pip install --no-cache-dir -e .
+
+      # Compile each service (against the ephemeral Postgres) and upload the
+      # per-release manifests to the Hetzner object store under
+      # releases/<id>/manifests/<service>/manifest_v1.json. image_tags travel in
+      # the POST body (below), not in S3 — so no service_metadata sidecar.
+      - name: Compile + upload manifests
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.S3_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.S3_SECRET_ACCESS_KEY }}
+          DBT_POSTGRES_HOST: localhost
+        run: |
+          python -m dbt_upload load \
+            --services-dir services \
+            --target hetzner \
+            --release "${{ steps.ids.outputs.release_id }}"
+
+      - name: Configure SSH for continuo-server
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.HETZNER_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+
+      - name: Drive the release through continuo
+        env:
+          HETZNER_HOST: ${{ secrets.HETZNER_HOST }}
+          RELEASE_ID: ${{ steps.ids.outputs.release_id }}
+          MANIFESTS_URI: s3://continuo-dev/releases/${{ steps.ids.outputs.release_id }}/manifests/
+          IMAGE_TAGS_JSON: ${{ steps.ids.outputs.image_tags }}
+        run: bash scripts/release.sh
