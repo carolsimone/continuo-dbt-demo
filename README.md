@@ -38,7 +38,7 @@ Configure these in the repo's Actions secrets before the workflow can run:
 |---|---|
 | `DOCKERHUB_USERNAME` | Docker Hub user; **must match** the username continuo's executor uses to pull job images, and the `FROM carolsimone/dbt-base` in the service Dockerfiles. |
 | `DOCKERHUB_TOKEN` | Docker Hub push token. |
-| `S3_ACCESS_KEY_ID` / `S3_SECRET_ACCESS_KEY` | Hetzner object-storage credentials (the `continuo-dev` bucket). |
+| `HETZNER_S3_ACCESS_KEY_ID` / `HETZNER_S3_SECRET_ACCESS_KEY` | Hetzner object-storage credentials (the `continuo-dev` bucket). |
 | `HETZNER_HOST` | `continuo-server` host/IP (SSH as root). |
 | `HETZNER_SSH_KEY` | Private SSH key authorized on the server (same key continuo's own deploy uses). |
 
