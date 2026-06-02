@@ -9,6 +9,6 @@ default:
       user: "{{ env_var('DBT_POSTGRES_USER', 'continuo_svc') }}"
       password: "{{ env_var('DBT_POSTGRES_PASSWORD', 'runner') }}"
       schema: analytics
-      search_path: e2e_schema
+      search_path: analytics
       threads: 4
 
