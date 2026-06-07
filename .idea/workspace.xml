@@ -1,0 +1,144 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="AutoImportSettings">
+    <option name="autoReloadType" value="ALL" />
+  </component>
+  <component name="ChangeListManager">
+    <list default="true" id="a1e23b13-c1ce-49fc-9fad-6b3990c2e996" name="Changes" comment="">
+      <change afterPath="$PROJECT_DIR$/services/service-2/models/table_new.sql" afterDir="false" />
+    </list>
+    <option name="SHOW_DIALOG" value="false" />
+    <option name="HIGHLIGHT_CONFLICTS" value="true" />
+    <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
+    <option name="LAST_RESOLUTION" value="IGNORE" />
+  </component>
+  <component name="EmbeddingIndexingInfo">
+    <option name="cachedIndexableFilesCount" value="65" />
+  </component>
+  <component name="Git.Settings">
+    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
+  </component>
+  <component name="GitHubPullRequestSearchHistory"><![CDATA[{
+  "lastFilter": {
+    "state": "OPEN",
+    "assignee": "carolsimone"
+  }
+}]]></component>
+  <component name="GithubPullRequestsUISettings"><![CDATA[{
+  "selectedUrlAndAccountId": {
+    "url": "git@github.com:carolsimone/continuo-dbt-demo.git",
+    "accountId": "839f3812-8022-4971-8612-6caa9cf35b3a"
+  }
+}]]></component>
+  <component name="NextEditCompletionFeaturesState">
+    <decayedCancelled>
+      <entry key="MS100" value="1.0" />
+      <entry key="MS500" value="1.0" />
+      <entry key="S2" value="1.0" />
+      <entry key="S5" value="1.0" />
+      <entry key="S10" value="1.0" />
+      <entry key="S30" value="1.0000000003146299" />
+      <entry key="S60" value="1.0002060088148168" />
+      <entry key="M2" value="1.1681038345307726" />
+      <entry key="M5" value="10.4153694074091" />
+      <entry key="M10" value="37.04160034462984" />
+      <entry key="M15" value="57.383278535111614" />
+      <entry key="M30" value="89.20813785868313" />
+      <entry key="H1" value="111.32967910455534" />
+      <entry key="H2" value="124.39152782702405" />
+      <entry key="H4" value="131.49146871232128" />
+      <entry key="D1" value="137.7192221060917" />
+      <entry key="W1" value="138.8162996485558" />
+    </decayedCancelled>
+    <decayedSelected>
+      <entry key="MS100" value="0.0" />
+      <entry key="MS500" value="0.0" />
+      <entry key="S2" value="1.3709085357491282E-172" />
+      <entry key="S5" value="1.798056739444366E-69" />
+      <entry key="S10" value="4.240349914151386E-35" />
+      <entry key="S30" value="3.4871227244218175E-12" />
+      <entry key="S60" value="1.8673839252874105E-6" />
+      <entry key="M2" value="0.0013665225666952634" />
+      <entry key="M5" value="0.07149023475941639" />
+      <entry key="M10" value="0.2673765785543237" />
+      <entry key="M15" value="0.4150326287006623" />
+      <entry key="M30" value="0.644230260621668" />
+      <entry key="H1" value="0.8026395583458792" />
+      <entry key="H2" value="0.895901533845031" />
+      <entry key="H4" value="0.946520751935757" />
+      <entry key="D1" value="0.9908814313437299" />
+      <entry key="W1" value="0.9986922276982333" />
+    </decayedSelected>
+    <decayedShown>
+      <entry key="MS100" value="0.9592641193252643" />
+      <entry key="MS500" value="0.9917167307382933" />
+      <entry key="S2" value="0.9979227189990506" />
+      <entry key="S5" value="0.999168569213607" />
+      <entry key="S10" value="0.9995841981612189" />
+      <entry key="S30" value="0.9998613804904591" />
+      <entry key="S60" value="1.0001385130324536" />
+      <entry key="M2" value="1.1694152342226343" />
+      <entry key="M5" value="10.486389742269202" />
+      <entry key="M10" value="37.30809830131696" />
+      <entry key="M15" value="57.79739778193044" />
+      <entry key="M30" value="89.8516552134537" />
+      <entry key="H1" value="112.13187318055702" />
+      <entry key="H2" value="125.28718033822949" />
+      <entry key="H4" value="132.43785781046523" />
+      <entry key="D1" value="138.71008055099094" />
+      <entry key="W1" value="139.81498856620007" />
+    </decayedShown>
+  </component>
+  <component name="ProjectColorInfo"><![CDATA[{
+  "associatedIndex": 5,
+  "fromUser": false
+}]]></component>
+  <component name="ProjectId" id="3EowksRNAvuz12UnrHlvP84EkNH" />
+  <component name="ProjectViewState">
+    <option name="hideEmptyMiddlePackages" value="true" />
+    <option name="showLibraryContents" value="true" />
+  </component>
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "ModuleVcsDetector.initialDetectionPerformed": "true",
+    "RunOnceActivity.ShowReadmeOnStart": "true",
+    "RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252": "true",
+    "RunOnceActivity.git.unshallow": "true",
+    "RunOnceActivity.typescript.service.memoryLimit.init": "true",
+    "codeWithMe.voiceChat.enabledByDefault": "false",
+    "com.intellij.ml.llm.matterhorn.ej.ui.settings.DefaultModelSelectionForGA.v1": "true",
+    "git-widget-placeholder": "3-wrong-model",
+    "junie.onboarding.icon.badge.shown": "true",
+    "last_opened_file_path": "/Users/simonecarolini/Desktop/github/continuo-dbt-demo",
+    "node.js.detected.package.eslint": "true",
+    "node.js.detected.package.tslint": "true",
+    "node.js.selected.package.eslint": "(autodetect)",
+    "node.js.selected.package.tslint": "(autodetect)",
+    "nodejs_package_manager_path": "npm",
+    "to.speed.mode.migration.done": "true",
+    "vue.rearranger.settings.migration": "true"
+  }
+}]]></component>
+  <component name="SharedIndexes">
+    <attachedChunks>
+      <set>
+        <option value="bundled-js-predefined-d6986cc7102b-31caf2ab9e3c-JavaScript-PY-261.24374.152" />
+        <option value="bundled-python-sdk-c59985aa861c-c2ffad84badb-com.jetbrains.pycharm.pro.sharedIndexes.bundled-PY-261.24374.152" />
+      </set>
+    </attachedChunks>
+  </component>
+  <component name="TaskManager">
+    <task active="true" id="Default" summary="Default task">
+      <changelist id="a1e23b13-c1ce-49fc-9fad-6b3990c2e996" name="Changes" comment="" />
+      <created>1780858375109</created>
+      <option name="number" value="Default" />
+      <option name="presentableId" value="Default" />
+      <updated>1780858375109</updated>
+      <workItem from="1780858376161" duration="752000" />
+    </task>
+    <servers />
+  </component>
+  <component name="TypeScriptGeneratedFilesManager">
+    <option name="version" value="3" />
+  </component>
+</project>
