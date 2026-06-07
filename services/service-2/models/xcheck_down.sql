@@ -1,2 +1,2 @@
-{{ config(materialized='table') }}
+{{ config(materialized='table', tags=['xcheck']) }}
 SELECT id FROM analytics.xcheck_up
