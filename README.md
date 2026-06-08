@@ -1,16 +1,19 @@
 # continuo-dbt-demo
 
-A reference **dbt producer** for [continuo](https://github.com/carolsimone/continuo)'s blue/green release pipeline. It owns three dbt services, builds their images, and drives a continuo release from CD — the worked example of how any consumer's CD integrates with continuo.
+A reference **dbt producer** for [continuo](https://github.com/carolsimone/continuo)'s blue/green release pipeline. It owns three dbt services, builds their images, and drives continuo releases from CD — the worked example of how any consumer's CD integrates with continuo.
 
 ## What it does
 
-On every push to `services/**` (or manual dispatch), `.github/workflows/release.yml`:
+Releases are **per-service incremental**: each push releases only the service(s) whose `services/<svc>/` directory changed, and each changed service is its own independent release. The platform reassembles the full topology from its `service_prod` pointer table.
 
-1. **Builds + pushes** the shared `dbt-base` image and the three service images to Docker Hub as `<DOCKERHUB_USERNAME>/service-{1,2,3}:<short-sha>` (+ `:latest`). The name/tag is the contract: continuo's executor launches dbt jobs as `<DOCKERHUB_USERNAME>/<service_name>:<image_tag>`.
-2. **Compiles** each service (`dbt compile` against an ephemeral Postgres — no data needed) and **uploads** the manifests to the Hetzner object store at `releases/<release_id>/manifests/<service>/manifest_v1.json` (via `dbt_upload`, `hetzner` target in `targets.yaml`).
-3. **Drives the release** (`scripts/release.sh`): SSHes to `continuo-server`, port-forwards `release-controller` (:8088), reads `GET /current-prod`, then `POST /releases` with `{release_id, manifests_uri, image_tags, bootstrap}` and **polls to a terminal status — failing the deploy on `rejected`**.
+On every push to `services/**` (or manual dispatch of a single service), `.github/workflows/release.yml`:
 
-`image_tags` travel in the POST body (continuo treats them as authoritative); there is **no `service_metadata.json` sidecar** dependency.
+1. **Detects** which `services/<svc>/` directories changed in the push and fans out a matrix over them (one matrix job per changed service). A manual `workflow_dispatch` takes a `service` input that forces the matrix to that single service.
+2. For each changed service, **builds + pushes** the shared `dbt-base` image (the `FROM` layer) and that one service's image to Docker Hub as `<DOCKERHUB_USERNAME>/<service>:<short-sha>` (+ `:latest`). The name/tag is the contract: continuo's executor launches dbt jobs as `<DOCKERHUB_USERNAME>/<service_name>:<image_tag>`.
+3. **Compiles** that one service (`dbt compile` against an ephemeral Postgres — no data needed) and **uploads** its manifest to the Hetzner object store at the canonical key `<service>/<release_id>/manifest.json` (via `dbt_upload`, `hetzner` target in `targets.yaml`).
+4. **Drives the release** (`scripts/release.sh`): SSHes to `continuo-server`, port-forwards `release-controller` (:8088), reads `GET /current-prod`, then `POST /releases` with the single-service body `{service, release_id, image_tag, bootstrap}` and **polls to a terminal status — failing the deploy on `rejected`**.
+
+The `image_tag` travels in the POST body (continuo treats it as authoritative); there is **no `service_metadata.json` sidecar** dependency. If a push changes multiple services, each fires as its own POST; continuo's global FIFO serializes them.
 
 ### First run = bootstrap
 
@@ -22,7 +25,7 @@ On every push to `services/**` (or manual dispatch), `.github/workflows/release.
 base/            # dbt-base image: pinned dbt-core/dbt-postgres + shared macros (generate_schema_name)
 services/        # service-1/2/3: dbt_project.yml, profiles.yml (schema: analytics), models/, seeds/, Dockerfile
 dbt_upload/      # compile + upload-to-S3 CLI
-targets.yaml     # S3 targets (hetzner → continuo-dev bucket)
+targets.yaml     # S3 targets (hetzner -> continuo-dev bucket)
 Dockerfile.upload, pyproject.toml, uv.lock, tests/   # dbt_upload packaging + its tests
 scripts/release.sh
 .github/workflows/release.yml

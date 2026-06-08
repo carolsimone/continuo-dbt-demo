@@ -60,7 +60,7 @@ def main(argv: list[str] | None = None) -> int:
     p_load.add_argument(
         "--release-id",
         default="",
-        help="Upload to per-release prefix releases/<id>/manifests/<service>/manifest_v1.json",
+        help="Upload to the canonical key <service>/<release-id>/manifest.json",
     )
 
     args = parser.parse_args(argv)

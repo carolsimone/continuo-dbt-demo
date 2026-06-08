@@ -1,8 +1,11 @@
 name: release
 
-# Deploy a dbt model change through continuo's blue/green pipeline:
-# build+push the per-service images, compile+upload the manifests to S3, then
-# POST a release to continuo (the first run auto-bootstraps; see scripts/release.sh).
+# Deploy dbt model changes through continuo's per-service release pipeline.
+# Each changed service is its own independent release: build+push that service's
+# image, compile+upload only its manifest to the canonical S3 key
+# <service>/<release_id>/manifest.json, then POST a single-service release to
+# continuo (the first run auto-bootstraps; see scripts/release.sh). The platform
+# reassembles the full topology from its service_prod pointer table.
 on:
   push:
     branches: [main]
@@ -13,16 +16,84 @@ on:
       - 'targets.yaml'
       - '.github/workflows/release.yml'
   workflow_dispatch:
+    inputs:
+      service:
+        description: 'Single service to release (e.g. service-1). Forces the matrix to just this service.'
+        required: true
+        type: string
 
+# Serialize releases: continuo's release-controller has a global FIFO, but
+# serializing here too keeps the per-service POSTs from racing each other.
 concurrency:
   group: release-main
   cancel-in-progress: false
 
 jobs:
-  release:
+  # detect emits a JSON array of changed service names. The release job fans out
+  # over it with a matrix; an empty array skips the release job entirely.
+  detect:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    outputs:
+      matrix: ${{ steps.detect.outputs.matrix }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # Need the previous commit to diff against on a push.
+          fetch-depth: 2
+
+      - name: Detect changed services
+        id: detect
+        run: |
+          set -euo pipefail
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            # Manual dispatch forces a single service.
+            svc="${{ github.event.inputs.service }}"
+            echo "manual dispatch -> service=${svc}"
+            matrix=$(printf '["%s"]' "${svc}")
+          else
+            BEFORE="${{ github.event.before }}"
+            # On the first push to a branch, github.event.before is all-zeros;
+            # fall back to diffing the tip commit against its parent.
+            if [ -z "${BEFORE}" ] || [ "${BEFORE}" = "0000000000000000000000000000000000000000" ]; then
+              RANGE="HEAD~1..HEAD"
+            else
+              RANGE="${BEFORE}..${{ github.sha }}"
+            fi
+            echo "diff range: ${RANGE}"
+
+            # Collect top-level service names under services/<svc>/ that changed.
+            changed=$(git diff --name-only "${RANGE}" -- 'services/**' \
+              | awk -F/ 'NF>=2 && $1=="services" {print $2}' \
+              | sort -u)
+            echo "changed service dirs:"
+            echo "${changed}"
+
+            if [ -z "${changed}" ]; then
+              matrix='[]'
+            else
+              matrix=$(echo "${changed}" | jq -R -s -c 'split("\n") | map(select(length > 0))')
+            fi
+          fi
+
+          echo "matrix=${matrix}"
+          echo "matrix=${matrix}" >> "$GITHUB_OUTPUT"
+
+  release:
+    needs: detect
+    if: needs.detect.outputs.matrix != '[]'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      # Each matrix job is one independent release; don't cancel siblings on one
+      # service's failure.
+      fail-fast: false
+      matrix:
+        service: ${{ fromJSON(needs.detect.outputs.matrix) }}
 
     # Ephemeral Postgres for `dbt compile` (compile opens a connection but needs
     # no data — it only resolves refs/jinja into manifest.json). User/db/password
@@ -51,9 +122,8 @@ jobs:
         run: |
           SHA="$(git rev-parse --short HEAD)"
           echo "tag=${SHA}" >> "$GITHUB_OUTPUT"
-          echo "release_id=rel-${SHA}-${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
-          # image_tags map for the POST body — all three services share this commit's tag.
-          echo "image_tags={\"service-1\":\"${SHA}\",\"service-2\":\"${SHA}\",\"service-3\":\"${SHA}\"}" >> "$GITHUB_OUTPUT"
+          # Per-service-unique, re-run-idempotent release id.
+          echo "release_id=rel-${SHA}-${GITHUB_RUN_NUMBER}-${{ matrix.service }}" >> "$GITHUB_OUTPUT"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -65,7 +135,7 @@ jobs:
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       # dbt-base is the shared base layer the service images build FROM. Push
-      # :latest so the per-service builds resolve it from the registry.
+      # :latest so the per-service build resolves it from the registry.
       - name: Build and push dbt-base
         uses: docker/build-push-action@v6
         with:
@@ -75,17 +145,16 @@ jobs:
           cache-from: type=gha,scope=dbt-base
           cache-to: type=gha,mode=max,scope=dbt-base
 
-      - name: Build and push service images
+      - name: Build and push service image
         run: |
-          for svc in service-1 service-2 service-3; do
-            docker buildx build \
-              --push \
-              -t "${DOCKERHUB_USERNAME}/${svc}:${{ steps.ids.outputs.tag }}" \
-              -t "${DOCKERHUB_USERNAME}/${svc}:latest" \
-              --cache-from "type=gha,scope=${svc}" \
-              --cache-to "type=gha,mode=max,scope=${svc}" \
-              "services/${svc}"
-          done
+          svc="${{ matrix.service }}"
+          docker buildx build \
+            --push \
+            -t "${DOCKERHUB_USERNAME}/${svc}:${{ steps.ids.outputs.tag }}" \
+            -t "${DOCKERHUB_USERNAME}/${svc}:latest" \
+            --cache-from "type=gha,scope=${svc}" \
+            --cache-to "type=gha,mode=max,scope=${svc}" \
+            "services/${svc}"
 
       - name: Set up Python + dbt
         uses: actions/setup-python@v5
@@ -100,20 +169,20 @@ jobs:
           pip install --no-cache-dir "dbt-core==1.12.0b1" "dbt-postgres==1.10.0"
           pip install --no-cache-dir -e .
 
-      # Compile each service (against the ephemeral Postgres) and upload the
-      # per-release manifests to the Hetzner object store under
-      # releases/<id>/manifests/<service>/manifest_v1.json. image_tags travel in
-      # the POST body (below), not in S3 — so no service_metadata sidecar.
-      - name: Compile + upload manifests
+      # Compile + upload ONLY this service. The positional service dir uploads
+      # just that one manifest to the canonical key
+      # <service>/<release_id>/manifest.json. The image tag travels in the POST
+      # body (below), not in S3 — so no service_metadata sidecar.
+      - name: Compile + upload manifest
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.HETZNER_S3_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.HETZNER_S3_SECRET_ACCESS_KEY }}
           DBT_POSTGRES_HOST: localhost
         run: |
           python -m dbt_upload load \
-            --services-dir services \
+            "services/${{ matrix.service }}" \
             --target hetzner \
-            --release "${{ steps.ids.outputs.release_id }}"
+            --release-id "${{ steps.ids.outputs.release_id }}"
 
       - name: Configure SSH for continuo-server
         run: |
@@ -125,6 +194,6 @@ jobs:
         env:
           HETZNER_HOST: ${{ secrets.HETZNER_HOST }}
           RELEASE_ID: ${{ steps.ids.outputs.release_id }}
-          MANIFESTS_URI: s3://continuo-dev/releases/${{ steps.ids.outputs.release_id }}/manifests/
-          IMAGE_TAGS_JSON: ${{ steps.ids.outputs.image_tags }}
+          SERVICE: ${{ matrix.service }}
+          IMAGE_TAG: ${{ steps.ids.outputs.tag }}
         run: bash scripts/release.sh
