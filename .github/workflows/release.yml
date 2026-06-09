@@ -21,10 +21,10 @@ concurrency:
 jobs:
   release:
     runs-on: ubuntu-latest
-    # Backstop: the deploy is a fast POST + a poll bounded to ~10m. If anything
-    # wedges (e.g. a stuck SSH/poll), fail fast instead of idling for GitHub's
-    # 6-hour default.
-    timeout-minutes: 30
+    # Backstop: the deploy is a fast POST + a short poll. If anything wedges
+    # (e.g. a stuck SSH/poll), fail fast instead of idling for GitHub's 6-hour
+    # default.
+    timeout-minutes: 10
     permissions:
       contents: read
 
