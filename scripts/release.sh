@@ -15,11 +15,17 @@
 # The port-forward + curl run ON the server (where the ClusterIP service is
 # reachable on localhost). The runner only needs SSH access.
 #
+# continuo models a release as a SINGLE changed service: POST /releases takes
+# one {service, image_tag} and the controller reconstructs the full manifest set
+# from the live service_prod pointers. The changed service's manifest is already
+# in S3 at the canonical key <service>/<release_id>/manifest.json, which the
+# controller derives itself — so it is not sent in the body.
+#
 # Required environment:
 #   HETZNER_HOST     — server host/IP (SSH as root; key already in ~/.ssh)
 #   RELEASE_ID       — unique per run, e.g. rel-<shortsha>-<runid>
-#   MANIFESTS_URI    — s3://<bucket>/releases/<id>/manifests/
-#   IMAGE_TAGS_JSON  — compact JSON, e.g. {"service-1":"<sha>","service-2":"<sha>","service-3":"<sha>"}
+#   SERVICE          — the single changed service, e.g. service-3
+#   IMAGE_TAG        — that service's image tag (this commit's short sha)
 #
 # Optional:
 #   FWD_PORT         — server-local port for the forward (default 18088)
@@ -29,8 +35,8 @@ set -euo pipefail
 
 : "${HETZNER_HOST:?HETZNER_HOST must be set}"
 : "${RELEASE_ID:?RELEASE_ID must be set}"
-: "${MANIFESTS_URI:?MANIFESTS_URI must be set}"
-: "${IMAGE_TAGS_JSON:?IMAGE_TAGS_JSON must be set}"
+: "${SERVICE:?SERVICE must be set}"
+: "${IMAGE_TAG:?IMAGE_TAG must be set}"
 FWD_PORT="${FWD_PORT:-18088}"
 POLL_ATTEMPTS="${POLL_ATTEMPTS:-150}"
 
@@ -41,9 +47,9 @@ echo "Driving release ${RELEASE_ID} against ${HETZNER_HOST}"
 # literally and expanded only on the server.
 ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=20 \
   "root@${HETZNER_HOST}" \
-  "bash -s '${RELEASE_ID}' '${MANIFESTS_URI}' '${IMAGE_TAGS_JSON}' '${FWD_PORT}' '${POLL_ATTEMPTS}'" <<'REMOTE'
+  "bash -s '${RELEASE_ID}' '${SERVICE}' '${IMAGE_TAG}' '${FWD_PORT}' '${POLL_ATTEMPTS}'" <<'REMOTE'
 set -euo pipefail
-RELEASE_ID="$1"; MANIFESTS_URI="$2"; IMAGE_TAGS_JSON="$3"; FWD_PORT="$4"; POLL_ATTEMPTS="$5"
+RELEASE_ID="$1"; SERVICE="$2"; IMAGE_TAG="$3"; FWD_PORT="$4"; POLL_ATTEMPTS="$5"
 export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
 
 kubectl -n continuo port-forward svc/release-controller "${FWD_PORT}:8088" >/tmp/release-pf.log 2>&1 &
@@ -66,8 +72,8 @@ CUR_ID=$(printf '%s' "$CURRENT" | sed -n 's/.*"current_prod_release_id"[[:space:
 if [ -z "$CUR_ID" ]; then BOOTSTRAP=true; else BOOTSTRAP=false; fi
 echo "current_prod release_id='${CUR_ID}' -> bootstrap=${BOOTSTRAP}"
 
-BODY=$(printf '{"release_id":"%s","manifests_uri":"%s","image_tags":%s,"bootstrap":%s}' \
-  "$RELEASE_ID" "$MANIFESTS_URI" "$IMAGE_TAGS_JSON" "$BOOTSTRAP")
+BODY=$(printf '{"release_id":"%s","service":"%s","image_tag":"%s","bootstrap":%s}' \
+  "$RELEASE_ID" "$SERVICE" "$IMAGE_TAG" "$BOOTSTRAP")
 echo "POST ${BASE}/releases ${BODY}"
 curl -sf -X POST "${BASE}/releases" -H 'content-type: application/json' -d "$BODY" || { echo "POST /releases failed"; exit 1; }
 echo
