@@ -143,9 +143,10 @@ def test_upload_manifest_increments_from_v7_to_v8(s3, s3_prefix, tmp_path):
 # Per-release upload layout (no localstack — MagicMock S3 client)
 
 
-def test_upload_manifest_release_mode_writes_v1_under_release_prefix(tmp_path):
-    """release_id uploads to releases/<id>/manifests/<service>/manifest_v1.json,
-    always v1 (fresh prefix), with no next_version lookup and no sidecar."""
+def test_upload_manifest_release_mode_writes_canonical_key(tmp_path):
+    """release_id uploads to the canonical key <service>/<release_id>/manifest.json
+    (shared by contract with continuo's CanonicalManifestKey), with no
+    next_version lookup and no sidecar."""
     from unittest.mock import MagicMock
     from dbt_upload.upload import upload_manifest
 
@@ -165,9 +166,9 @@ def test_upload_manifest_release_mode_writes_v1_under_release_prefix(tmp_path):
 
     upload_calls = [str(c) for c in mock_s3.upload_file.call_args_list]
     assert any(
-        "releases/rel-abc/manifests/service-1/manifest_v1.json" in c
+        "service-1/rel-abc/manifest.json" in c
         for c in upload_calls
-    ), f"per-release manifest_v1.json not uploaded; calls={upload_calls}"
+    ), f"canonical manifest key not uploaded; calls={upload_calls}"
     # No sidecar on the per-release path.
     assert not any("service_metadata.json" in c for c in upload_calls), \
         f"service_metadata.json must NOT be uploaded on the release path; calls={upload_calls}"
@@ -175,7 +176,7 @@ def test_upload_manifest_release_mode_writes_v1_under_release_prefix(tmp_path):
 
 def test_upload_services_release_mode_no_image_tag_required(tmp_path, monkeypatch):
     """With release_id set and IMAGE_TAG_PER_SERVICE empty, every service still
-    uploads to releases/<id>/manifests/<service>/manifest_v1.json with no sidecar."""
+    uploads to the canonical <service>/<release_id>/manifest.json with no sidecar."""
     from unittest.mock import MagicMock, patch
     from dbt_upload.upload import upload_services
 
@@ -212,8 +213,8 @@ def test_upload_services_release_mode_no_image_tag_required(tmp_path, monkeypatc
     upload_calls = [str(c) for c in mock_s3.upload_file.call_args_list]
     for name in services:
         assert any(
-            f"releases/rel-xyz/manifests/{name}/manifest_v1.json" in c
+            f"{name}/rel-xyz/manifest.json" in c
             for c in upload_calls
-        ), f"missing per-release manifest for {name}; calls={upload_calls}"
+        ), f"missing canonical manifest for {name}; calls={upload_calls}"
     assert not any("service_metadata.json" in c for c in upload_calls), \
         f"no sidecar on the release path; calls={upload_calls}"

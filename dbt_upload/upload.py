@@ -64,11 +64,13 @@ def upload_manifest(
     """Upload target/manifest.json to S3. Returns True on success.
 
     Two layouts:
-    - Per-release (release_id set): uploads to a fresh per-release prefix
-      releases/{release_id}/manifests/{service_name}/manifest_v1.json. The
-      filename is always v1 (the prefix is fresh per release, so no version
-      lookup is needed) and no service_metadata.json sidecar is written —
-      image tags travel in the POST /releases body, not in S3.
+    - Per-release (release_id set): uploads to the canonical key
+      {service_name}/{release_id}/manifest.json. This layout is shared by
+      contract with continuo's CanonicalManifestKey
+      (s3://<bucket>/<service>/<release_id>/manifest.json); the controller
+      derives the key from bucket+service+release_id, so it never travels in
+      the POST body. No service_metadata.json sidecar is written — the image
+      tag travels in the POST /releases body, not in S3.
     - Legacy (release_id empty): checks the current highest manifest_v{N}.json
       in the service S3 prefix and uploads as manifest_v{N+1}.json. If image_tag
       is provided, also writes and uploads a service_metadata.json sidecar.
@@ -81,7 +83,7 @@ def upload_manifest(
         return False
 
     if release_id:
-        key = f"releases/{release_id}/manifests/{service_name}/manifest_v1.json"
+        key = f"{service_name}/{release_id}/manifest.json"
         try:
             s3_client.upload_file(manifest_path, bucket, key)
         except Exception:
@@ -122,9 +124,9 @@ def upload_services(
 ) -> tuple[list[str], list[str]]:
     """Filter and upload manifests for each service directory.
 
-    When release_id is set, manifests go to the per-release prefix
-    releases/{release_id}/manifests/{service}/manifest_v1.json and no
-    image_tag is required (tags travel in the POST /releases body). When
+    When release_id is set, manifests go to the canonical key
+    {service}/{release_id}/manifest.json and no image_tag is required (tags
+    travel in the POST /releases body). When
     release_id is empty, the legacy {env}/manifest/{service}/manifest_v{N}.json
     layout is used and every service must have an image_tag for its sidecar.
 

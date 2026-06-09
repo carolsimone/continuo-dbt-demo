@@ -45,15 +45,44 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          # Need history to diff this push against the previous main tip and
+          # identify which service changed.
+          fetch-depth: 0
 
-      - name: Compute release identifiers
+      - name: Compute release identifiers + changed service
         id: ids
         run: |
           SHA="$(git rev-parse --short HEAD)"
+
+          # continuo models a release as a SINGLE changed service: POST /releases
+          # takes one {service, image_tag} and the controller reconstructs the
+          # rest of the set from the live service_prod pointers. So we diff this
+          # push and require exactly one services/<svc>/ to have changed.
+          BEFORE="${{ github.event.before }}"
+          if [ -z "$BEFORE" ] \
+             || [ "$BEFORE" = "0000000000000000000000000000000000000000" ] \
+             || ! git cat-file -e "${BEFORE}^{commit}" 2>/dev/null; then
+            BEFORE="$(git rev-parse HEAD^ 2>/dev/null || true)"
+          fi
+          if [ -z "$BEFORE" ]; then
+            echo "::error::cannot determine previous commit to diff against"; exit 1
+          fi
+
+          CHANGED="$(git diff --name-only "$BEFORE" HEAD -- 'services/' | cut -d/ -f1-2 | sort -u)"
+          COUNT="$(printf '%s\n' "$CHANGED" | grep -c . || true)"
+          if [ "$COUNT" -ne 1 ]; then
+            echo "::error::continuo accepts exactly one changed service per release; found ${COUNT}:"
+            printf '%s\n' "$CHANGED"
+            exit 1
+          fi
+          SERVICE="$(printf '%s' "$CHANGED" | cut -d/ -f2)"
+          echo "Changed service: ${SERVICE} @ ${SHA}"
+
           echo "tag=${SHA}" >> "$GITHUB_OUTPUT"
           echo "release_id=rel-${SHA}-${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
-          # image_tags map for the POST body — all three services share this commit's tag.
-          echo "image_tags={\"service-1\":\"${SHA}\",\"service-2\":\"${SHA}\",\"service-3\":\"${SHA}\"}" >> "$GITHUB_OUTPUT"
+          echo "service=${SERVICE}" >> "$GITHUB_OUTPUT"
+          echo "image_tag=${SHA}" >> "$GITHUB_OUTPUT"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -75,17 +104,19 @@ jobs:
           cache-from: type=gha,scope=dbt-base
           cache-to: type=gha,mode=max,scope=dbt-base
 
-      - name: Build and push service images
+      # Only the changed service gets a new image at this commit's tag; the
+      # other services keep their current prod image tags (the controller reuses
+      # them via the service_prod pointers), so there is nothing to rebuild.
+      - name: Build and push the changed service image
         run: |
-          for svc in service-1 service-2 service-3; do
-            docker buildx build \
-              --push \
-              -t "${DOCKERHUB_USERNAME}/${svc}:${{ steps.ids.outputs.tag }}" \
-              -t "${DOCKERHUB_USERNAME}/${svc}:latest" \
-              --cache-from "type=gha,scope=${svc}" \
-              --cache-to "type=gha,mode=max,scope=${svc}" \
-              "services/${svc}"
-          done
+          svc="${{ steps.ids.outputs.service }}"
+          docker buildx build \
+            --push \
+            -t "${DOCKERHUB_USERNAME}/${svc}:${{ steps.ids.outputs.tag }}" \
+            -t "${DOCKERHUB_USERNAME}/${svc}:latest" \
+            --cache-from "type=gha,scope=${svc}" \
+            --cache-to "type=gha,mode=max,scope=${svc}" \
+            "services/${svc}"
 
       - name: Set up Python + dbt
         uses: actions/setup-python@v5
@@ -100,18 +131,20 @@ jobs:
           pip install --no-cache-dir "dbt-core==1.12.0b1" "dbt-postgres==1.10.0"
           pip install --no-cache-dir -e .
 
-      # Compile each service (against the ephemeral Postgres) and upload the
-      # per-release manifests to the Hetzner object store under
-      # releases/<id>/manifests/<service>/manifest_v1.json. image_tags travel in
-      # the POST body (below), not in S3 — so no service_metadata sidecar.
-      - name: Compile + upload manifests
+      # Compile the changed service (against the ephemeral Postgres) and upload
+      # its manifest to the Hetzner object store at the canonical key
+      # <service>/<release_id>/manifest.json (continuo's CanonicalManifestKey).
+      # The image tag travels in the POST body (below), not in S3 — so no
+      # service_metadata sidecar. Other services' manifests are already in S3
+      # from their own releases; the controller reuses them via service_prod.
+      - name: Compile + upload manifest
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.HETZNER_S3_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.HETZNER_S3_SECRET_ACCESS_KEY }}
           DBT_POSTGRES_HOST: localhost
         run: |
           python -m dbt_upload load \
-            --services-dir services \
+            "services/${{ steps.ids.outputs.service }}" \
             --target hetzner \
             --release "${{ steps.ids.outputs.release_id }}"
 
@@ -125,6 +158,6 @@ jobs:
         env:
           HETZNER_HOST: ${{ secrets.HETZNER_HOST }}
           RELEASE_ID: ${{ steps.ids.outputs.release_id }}
-          MANIFESTS_URI: s3://continuo-dev/releases/${{ steps.ids.outputs.release_id }}/manifests/
-          IMAGE_TAGS_JSON: ${{ steps.ids.outputs.image_tags }}
+          SERVICE: ${{ steps.ids.outputs.service }}
+          IMAGE_TAG: ${{ steps.ids.outputs.image_tag }}
         run: bash scripts/release.sh
