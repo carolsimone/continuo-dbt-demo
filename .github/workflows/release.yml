@@ -19,33 +19,20 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  release:
+  # Decide whether this push is releasable and which service it targets. Kept as
+  # its own job so a no-op push (CI/tooling/base only — no service changed) skips
+  # the release job cleanly via `if:` instead of failing partway through.
+  detect:
     runs-on: ubuntu-latest
-    # Backstop: the deploy is a fast POST + a short poll. If anything wedges
-    # (e.g. a stuck SSH/poll), fail fast instead of idling for GitHub's 6-hour
-    # default.
-    timeout-minutes: 10
+    timeout-minutes: 5
     permissions:
       contents: read
-
-    # Ephemeral Postgres for `dbt compile` (compile opens a connection but needs
-    # no data — it only resolves refs/jinja into manifest.json). User/db/password
-    # match the dbt profile defaults so no DBT_POSTGRES_* overrides are needed.
-    services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_USER: continuo_svc
-          POSTGRES_PASSWORD: runner
-          POSTGRES_DB: continuo_dbt
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
-
-    env:
-      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-
+    outputs:
+      skip: ${{ steps.ids.outputs.skip }}
+      service: ${{ steps.ids.outputs.service }}
+      image_tag: ${{ steps.ids.outputs.image_tag }}
+      tag: ${{ steps.ids.outputs.tag }}
+      release_id: ${{ steps.ids.outputs.release_id }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -75,18 +62,62 @@ jobs:
 
           CHANGED="$(git diff --name-only "$BEFORE" HEAD -- 'services/' | cut -d/ -f1-2 | sort -u)"
           COUNT="$(printf '%s\n' "$CHANGED" | grep -c . || true)"
+
+          # No service changed (e.g. a CI/tooling/base-only push) — nothing to
+          # release. Signal the release job to skip cleanly rather than fail.
+          if [ "$COUNT" -eq 0 ]; then
+            echo "No service changed in this push — nothing to release; skipping."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # More than one service is ambiguous under the single-service contract.
           if [ "$COUNT" -ne 1 ]; then
             echo "::error::continuo accepts exactly one changed service per release; found ${COUNT}:"
             printf '%s\n' "$CHANGED"
             exit 1
           fi
+
           SERVICE="$(printf '%s' "$CHANGED" | cut -d/ -f2)"
           echo "Changed service: ${SERVICE} @ ${SHA}"
 
+          echo "skip=false" >> "$GITHUB_OUTPUT"
           echo "tag=${SHA}" >> "$GITHUB_OUTPUT"
           echo "release_id=rel-${SHA}-${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
           echo "service=${SERVICE}" >> "$GITHUB_OUTPUT"
           echo "image_tag=${SHA}" >> "$GITHUB_OUTPUT"
+
+  release:
+    needs: detect
+    if: needs.detect.outputs.skip != 'true'
+    runs-on: ubuntu-latest
+    # Backstop: the deploy is a fast POST + a short poll. If anything wedges
+    # (e.g. a stuck SSH/poll), fail fast instead of idling for GitHub's 6-hour
+    # default.
+    timeout-minutes: 10
+    permissions:
+      contents: read
+
+    # Ephemeral Postgres for `dbt compile` (compile opens a connection but needs
+    # no data — it only resolves refs/jinja into manifest.json). User/db/password
+    # match the dbt profile defaults so no DBT_POSTGRES_* overrides are needed.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: continuo_svc
+          POSTGRES_PASSWORD: runner
+          POSTGRES_DB: continuo_dbt
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+
+    env:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -113,10 +144,10 @@ jobs:
       # them via the service_prod pointers), so there is nothing to rebuild.
       - name: Build and push the changed service image
         run: |
-          svc="${{ steps.ids.outputs.service }}"
+          svc="${{ needs.detect.outputs.service }}"
           docker buildx build \
             --push \
-            -t "${DOCKERHUB_USERNAME}/${svc}:${{ steps.ids.outputs.tag }}" \
+            -t "${DOCKERHUB_USERNAME}/${svc}:${{ needs.detect.outputs.tag }}" \
             -t "${DOCKERHUB_USERNAME}/${svc}:latest" \
             --cache-from "type=gha,scope=${svc}" \
             --cache-to "type=gha,mode=max,scope=${svc}" \
@@ -148,9 +179,9 @@ jobs:
           DBT_POSTGRES_HOST: localhost
         run: |
           python -m dbt_upload load \
-            "services/${{ steps.ids.outputs.service }}" \
+            "services/${{ needs.detect.outputs.service }}" \
             --target hetzner \
-            --release "${{ steps.ids.outputs.release_id }}"
+            --release "${{ needs.detect.outputs.release_id }}"
 
       - name: Configure SSH for continuo-server
         run: |
@@ -161,7 +192,7 @@ jobs:
       - name: Drive the release through continuo
         env:
           HETZNER_HOST: ${{ secrets.HETZNER_HOST }}
-          RELEASE_ID: ${{ steps.ids.outputs.release_id }}
-          SERVICE: ${{ steps.ids.outputs.service }}
-          IMAGE_TAG: ${{ steps.ids.outputs.image_tag }}
+          RELEASE_ID: ${{ needs.detect.outputs.release_id }}
+          SERVICE: ${{ needs.detect.outputs.service }}
+          IMAGE_TAG: ${{ needs.detect.outputs.image_tag }}
         run: bash scripts/release.sh
