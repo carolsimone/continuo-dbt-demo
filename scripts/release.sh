@@ -35,7 +35,11 @@
 #
 # Optional:
 #   FWD_PORT         — server-local port for the forward (default 18088)
-#   POLL_ATTEMPTS    — terminal-status poll attempts (default 150)
+#   POLL_ATTEMPTS    — terminal-status poll attempts (default 100). Each attempt
+#                      is sleep + a short SSH round-trip (~5s), so ~100 attempts
+#                      self-times-out at ~8-9m — just under the job's 10m cap, so
+#                      a stuck release exits with a clean message rather than a
+#                      hard job kill.
 #   POLL_INTERVAL    — seconds between poll attempts (default 4)
 
 set -euo pipefail
@@ -45,7 +49,7 @@ set -euo pipefail
 : "${SERVICE:?SERVICE must be set}"
 : "${IMAGE_TAG:?IMAGE_TAG must be set}"
 FWD_PORT="${FWD_PORT:-18088}"
-POLL_ATTEMPTS="${POLL_ATTEMPTS:-150}"
+POLL_ATTEMPTS="${POLL_ATTEMPTS:-100}"
 POLL_INTERVAL="${POLL_INTERVAL:-4}"
 
 SSH_OPTS=(
