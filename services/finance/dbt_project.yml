@@ -1,0 +1,21 @@
+name: finance
+version: '1.0.0'
+config-version: 2
+profile: default
+
+model-paths: ["models"]
+seed-paths: ["seeds"]
+
+seeds:
+  finance:
+    +full_refresh: false
+    +meta:
+      owner: "finance"
+      criticality: "CORE"
+
+models:
+  finance:
+    +materialized: table
+    +meta:
+      owner: "finance"
+      criticality: "CORE"
