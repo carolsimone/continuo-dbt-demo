@@ -1,0 +1,31 @@
+version: 2
+
+models:
+  - name: fx_transactions_eur
+    description: "FX transactions with amount restated in EUR via seed_fx_rates_eur."
+    columns:
+      - name: transaction_id
+        tests:
+          - unique
+          - not_null
+      - name: rate_to_eur
+        description: "Multiplier applied to amount; NULL means an uncovered (currency, date) pair."
+        tests:
+          - not_null
+      - name: amount_eur
+        tests:
+          - not_null
+
+seeds:
+  - name: seed_fx_rates_eur
+    description: "Per-(currency, date) rate to convert a currency amount into EUR."
+    columns:
+      - name: currency
+        tests:
+          - not_null
+      - name: rate_date
+        tests:
+          - not_null
+      - name: rate_to_eur
+        tests:
+          - not_null
