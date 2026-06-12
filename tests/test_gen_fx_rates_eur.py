@@ -39,6 +39,8 @@ def test_rows_cover_distinct_currency_date_pairs():
     keys = {(r["currency"], r["rate_date"]) for r in rows}
     assert keys == {("USD", "2024-05-11"), ("EUR", "2024-06-14")}
     assert len(rows) == 2  # deduped
+    order = [(r["currency"], r["rate_date"]) for r in rows]
+    assert order == sorted(order)
 
 
 def test_known_currency_required():

@@ -10,6 +10,7 @@ Run from repo root:  uv run python scripts/gen_fx_rates_eur.py
 import csv
 import hashlib
 from pathlib import Path
+from typing import Iterable
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "services" / "core" / "seeds" / "seed_fx_transactions.csv"
@@ -40,13 +41,13 @@ def _jitter_factor(currency: str, date: str) -> float:
 
 
 def rate_to_eur(currency: str, date: str) -> float:
-    base = BASE_RATES[currency]  # KeyError on unknown currency (intentional)
     if currency == "EUR":
         return 1.0
+    base = BASE_RATES[currency]  # KeyError on unknown currency (intentional)
     return round(base * _jitter_factor(currency, date), 6)
 
 
-def build_rows(txns):
+def build_rows(txns: Iterable[dict]) -> list[dict]:
     """txns: iterable of dicts with 'currency_from' and 'created_at'.
     Returns a sorted, deduped list of {'currency','rate_date','rate_to_eur'} rows.
     """
