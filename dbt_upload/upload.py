@@ -3,15 +3,8 @@ import json
 import logging
 import os
 import re
-import tempfile
-from pathlib import Path
 
 import boto3
-
-from dbt_upload.service_metadata import (
-    parse_image_tag_env,
-    write_service_metadata_json,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -58,7 +51,6 @@ def upload_manifest(
     service_dir: str,
     env: str,
     bucket: str,
-    image_tag: str = "",
     release_id: str = "",
 ) -> bool:
     """Upload target/manifest.json to S3. Returns True on success.
@@ -69,11 +61,10 @@ def upload_manifest(
       contract with continuo's CanonicalManifestKey
       (s3://<bucket>/<service>/<release_id>/manifest.json); the controller
       derives the key from bucket+service+release_id, so it never travels in
-      the POST body. No service_metadata.json sidecar is written — the image
-      tag travels in the POST /releases body, not in S3.
+      the POST body. The image tag travels in the POST /releases body, not in
+      S3 — there is no service_metadata.json sidecar.
     - Legacy (release_id empty): checks the current highest manifest_v{N}.json
-      in the service S3 prefix and uploads as manifest_v{N+1}.json. If image_tag
-      is provided, also writes and uploads a service_metadata.json sidecar.
+      in the service S3 prefix and uploads as manifest_v{N+1}.json.
     """
     service_name = os.path.basename(service_dir)
     manifest_path = os.path.join(service_dir, "target", "manifest.json")
@@ -101,21 +92,6 @@ def upload_manifest(
         logger.exception("S3 upload failed for %s", service_name)
         return False
     logger.info("Uploaded %s -> s3://%s/%s (v%d)", service_name, bucket, key, version)
-
-    # Write and upload service_metadata.json sidecar if image_tag is provided.
-    if image_tag:
-        with tempfile.TemporaryDirectory() as _tmp:
-            meta_dir = Path(_tmp)
-            write_service_metadata_json(
-                out_dir=meta_dir,
-                service_name=service_name,
-                manifest_version=f"v{version}",
-                image_tag=image_tag,
-            )
-            meta_key = f"{env}/manifest/{service_name}/service_metadata.json"
-            s3_client.upload_file(str(meta_dir / "service_metadata.json"), bucket, meta_key)
-            logger.info("Uploaded service_metadata.json -> s3://%s/%s", bucket, meta_key)
-
     return True
 
 
@@ -125,10 +101,10 @@ def upload_services(
     """Filter and upload manifests for each service directory.
 
     When release_id is set, manifests go to the canonical key
-    {service}/{release_id}/manifest.json and no image_tag is required (tags
-    travel in the POST /releases body). When
-    release_id is empty, the legacy {env}/manifest/{service}/manifest_v{N}.json
-    layout is used and every service must have an image_tag for its sidecar.
+    {service}/{release_id}/manifest.json (the layout continuo's
+    CanonicalManifestKey derives). When release_id is empty, the legacy
+    {env}/manifest/{service}/manifest_v{N}.json layout is used. In both layouts
+    the image tag travels in the POST /releases body, not in S3.
 
     Returns (succeeded_dirs, failed_dirs).
     """
@@ -146,25 +122,9 @@ def upload_services(
     succeeded: list[str] = []
     failed: list[str] = []
 
-    image_tag_map = parse_image_tag_env(os.getenv("IMAGE_TAG_PER_SERVICE", ""))
-
     for service_dir in service_dirs:
         service_name = os.path.basename(service_dir)
         logger.info("Uploading %s", service_name)
-
-        # On the legacy path, refuse to upload before image_tag is known: a
-        # successful manifest upload without a sidecar poisons the snapshot —
-        # manifest-controller propagates image_tag="" and the run fails at
-        # deployment time on every task. The per-release path carries no sidecar
-        # (tags travel in the POST /releases body), so it needs no image_tag.
-        image_tag = image_tag_map.get(service_name, "")
-        if not release_id and not image_tag:
-            logger.error(
-                "image_tag missing for %s — set IMAGE_TAG_PER_SERVICE=%s=<tag>,...; refusing to upload",
-                service_name, service_name,
-            )
-            failed.append(service_dir)
-            continue
 
         try:
             filter_manifest(service_dir)
@@ -173,10 +133,7 @@ def upload_services(
             failed.append(service_dir)
             continue
 
-        if upload_manifest(
-            s3_client, service_dir, env, bucket,
-            image_tag=image_tag, release_id=release_id,
-        ):
+        if upload_manifest(s3_client, service_dir, env, bucket, release_id=release_id):
             succeeded.append(service_dir)
         else:
             failed.append(service_dir)
