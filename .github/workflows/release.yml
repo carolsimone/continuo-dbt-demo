@@ -181,7 +181,7 @@ jobs:
           python -m dbt_upload load \
             "services/${{ needs.detect.outputs.service }}" \
             --target hetzner \
-            --release "${{ needs.detect.outputs.release_id }}"
+            --release-id "${{ needs.detect.outputs.release_id }}"
 
       - name: Configure SSH for continuo-server
         run: |
