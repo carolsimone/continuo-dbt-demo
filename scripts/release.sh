@@ -48,6 +48,8 @@ set -euo pipefail
 : "${RELEASE_ID:?RELEASE_ID must be set}"
 : "${SERVICE:?SERVICE must be set}"
 : "${IMAGE_TAG:?IMAGE_TAG must be set}"
+: "${REPO:?REPO must be set}"
+: "${COMMIT_SHA:?COMMIT_SHA must be set}"
 FWD_PORT="${FWD_PORT:-18088}"
 POLL_ATTEMPTS="${POLL_ATTEMPTS:-100}"
 POLL_INTERVAL="${POLL_INTERVAL:-4}"
@@ -108,8 +110,8 @@ CUR_ID="$(printf '%s' "$CURRENT" | sed -n 's/.*"current_prod_release_id"[[:space
 if [ -z "$CUR_ID" ]; then BOOTSTRAP=true; else BOOTSTRAP=false; fi
 echo "current_prod release_id='${CUR_ID}' -> bootstrap=${BOOTSTRAP}"
 
-BODY="$(printf '{"release_id":"%s","service":"%s","image_tag":"%s","bootstrap":%s}' \
-  "$RELEASE_ID" "$SERVICE" "$IMAGE_TAG" "$BOOTSTRAP")"
+BODY="$(printf '{"release_id":"%s","service":"%s","image_tag":"%s","bootstrap":%s,"repo":"%s","commit_sha":"%s"}' \
+  "$RELEASE_ID" "$SERVICE" "$IMAGE_TAG" "$BOOTSTRAP" "$REPO" "$COMMIT_SHA")"
 echo "POST /releases ${BODY}"
 remote_api POST /releases "$BODY" >/dev/null || { echo "POST /releases failed"; exit 1; }
 

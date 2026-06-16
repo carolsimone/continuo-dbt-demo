@@ -195,4 +195,6 @@ jobs:
           RELEASE_ID: ${{ needs.detect.outputs.release_id }}
           SERVICE: ${{ needs.detect.outputs.service }}
           IMAGE_TAG: ${{ needs.detect.outputs.image_tag }}
+          REPO: ${{ github.repository }}
+          COMMIT_SHA: ${{ github.sha }}
         run: bash scripts/release.sh
