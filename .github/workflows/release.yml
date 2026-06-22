@@ -29,6 +29,8 @@ jobs:
       contents: read
     outputs:
       skip: ${{ steps.ids.outputs.skip }}
+      skip_release: ${{ steps.ids.outputs.skip_release }}
+      base_changed: ${{ steps.ids.outputs.base_changed }}
       service: ${{ steps.ids.outputs.service }}
       image_tag: ${{ steps.ids.outputs.image_tag }}
       tag: ${{ steps.ids.outputs.tag }}
@@ -60,27 +62,50 @@ jobs:
             echo "::error::cannot determine previous commit to diff against"; exit 1
           fi
 
+          # A change to the shared dbt-base (base/**) must re-bake EVERY service
+          # image, not just the changed one: the base is the layer the service
+          # images build FROM, so a base change (e.g. validation_runner.py) leaves
+          # any service not rebuilt on a stale-base image. The release job fans the
+          # rebuild out to all services when base_changed=true.
+          if git diff --name-only "$BEFORE" HEAD -- 'base/' | grep -q .; then
+            BASE_CHANGED=true
+          else
+            BASE_CHANGED=false
+          fi
+          echo "base_changed=${BASE_CHANGED}" >> "$GITHUB_OUTPUT"
+
           CHANGED="$(git diff --name-only "$BEFORE" HEAD -- 'services/' | cut -d/ -f1-2 | sort -u)"
           COUNT="$(printf '%s\n' "$CHANGED" | grep -c . || true)"
 
-          # No service changed (e.g. a CI/tooling/base-only push) — nothing to
-          # release. Signal the release job to skip cleanly rather than fail.
-          if [ "$COUNT" -eq 0 ]; then
-            echo "No service changed in this push — nothing to release; skipping."
-            echo "skip=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
           # More than one service is ambiguous under the single-service contract.
-          if [ "$COUNT" -ne 1 ]; then
+          if [ "$COUNT" -gt 1 ]; then
             echo "::error::continuo accepts exactly one changed service per release; found ${COUNT}:"
             printf '%s\n' "$CHANGED"
             exit 1
           fi
 
+          # No service changed. If base changed we still run the release job to
+          # fan-out the rebuild (but POST no release); otherwise there is nothing
+          # to do and the whole release job is skipped.
+          if [ "$COUNT" -eq 0 ]; then
+            echo "skip_release=true" >> "$GITHUB_OUTPUT"
+            if [ "$BASE_CHANGED" = "true" ]; then
+              echo "Base changed with no service change — re-baking all service images; no release POST."
+              echo "skip=false" >> "$GITHUB_OUTPUT"
+            else
+              echo "No service or base change in this push — nothing to do; skipping."
+              echo "skip=true" >> "$GITHUB_OUTPUT"
+            fi
+            exit 0
+          fi
+
+          # Exactly one service changed → normal single-service release (and the
+          # base fan-out too, if base_changed).
           SERVICE="$(printf '%s' "$CHANGED" | cut -d/ -f2)"
-          echo "Changed service: ${SERVICE} @ ${SHA}"
+          echo "Changed service: ${SERVICE} @ ${SHA} (base_changed=${BASE_CHANGED})"
 
           echo "skip=false" >> "$GITHUB_OUTPUT"
+          echo "skip_release=false" >> "$GITHUB_OUTPUT"
           echo "tag=${SHA}" >> "$GITHUB_OUTPUT"
           echo "release_id=rel-${SHA}-${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
           echo "service=${SERVICE}" >> "$GITHUB_OUTPUT"
@@ -118,6 +143,10 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          # Full history so the base fan-out can derive each service's current
+          # prod tag (the short SHA of the last commit that touched its dir).
+          fetch-depth: 0
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -139,10 +168,22 @@ jobs:
           cache-from: type=gha,scope=dbt-base
           cache-to: type=gha,mode=max,scope=dbt-base
 
+      # A dbt-base change must reach EVERY service, not just the changed one:
+      # re-bake all service images FROM the fresh base under their existing prod
+      # tags so continuo's service_prod pointers resolve to fresh-base images.
+      # Without this, services not rebuilt keep a stale-base image and any release
+      # whose validation closure touches them rejects at `validating` — and the
+      # pipeline cannot self-heal. Combined with the validation Job's
+      # imagePullPolicy: Always, every validation/run then re-pulls the fresh base.
+      - name: Re-bake all service images on a dbt-base change
+        if: needs.detect.outputs.base_changed == 'true'
+        run: bash scripts/rebuild_services_from_base.sh
+
       # Only the changed service gets a new image at this commit's tag; the
       # other services keep their current prod image tags (the controller reuses
       # them via the service_prod pointers), so there is nothing to rebuild.
       - name: Build and push the changed service image
+        if: needs.detect.outputs.skip_release != 'true'
         run: |
           svc="${{ needs.detect.outputs.service }}"
           docker buildx build \
@@ -154,6 +195,7 @@ jobs:
             "services/${svc}"
 
       - name: Set up Python + dbt
+        if: needs.detect.outputs.skip_release != 'true'
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -162,6 +204,7 @@ jobs:
       # install both into the same interpreter so `python -m dbt_upload` (which
       # shells out to `dbt compile`) finds dbt on PATH.
       - name: Install dbt + dbt_upload
+        if: needs.detect.outputs.skip_release != 'true'
         run: |
           pip install --no-cache-dir "dbt-core==1.12.0b1" "dbt-postgres==1.10.0"
           pip install --no-cache-dir -e .
@@ -173,6 +216,7 @@ jobs:
       # service_metadata sidecar. Other services' manifests are already in S3
       # from their own releases; the controller reuses them via service_prod.
       - name: Compile + upload manifest
+        if: needs.detect.outputs.skip_release != 'true'
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.HETZNER_S3_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.HETZNER_S3_SECRET_ACCESS_KEY }}
@@ -184,12 +228,14 @@ jobs:
             --release-id "${{ needs.detect.outputs.release_id }}"
 
       - name: Configure SSH for continuo-server
+        if: needs.detect.outputs.skip_release != 'true'
         run: |
           mkdir -p ~/.ssh
           printf '%s\n' "${{ secrets.HETZNER_SSH_KEY }}" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
 
       - name: Drive the release through continuo
+        if: needs.detect.outputs.skip_release != 'true'
         env:
           HETZNER_HOST: ${{ secrets.HETZNER_HOST }}
           RELEASE_ID: ${{ needs.detect.outputs.release_id }}
