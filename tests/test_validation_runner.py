@@ -2,10 +2,12 @@
 
 No database or localstack required — boto3 is patched with a MagicMock.
 """
+import json
 from unittest.mock import MagicMock, patch
 
 import pytest
 
+from base import validation_result
 from base.validation_runner import load_candidate_sql, _parse_s3_uri, main
 
 
@@ -128,3 +130,77 @@ def test_load_candidate_sql_empty_uri_returns_empty(monkeypatch):
 
     assert result == ""
     mock_client.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# main() emits the structured validation-result block on stdout
+# ---------------------------------------------------------------------------
+
+
+def _set_build_env(monkeypatch):
+    """Env every main() build path needs (schema/table/SQL + DB connection)."""
+    monkeypatch.setenv("DBT_TARGET_SCHEMA", "cand")
+    monkeypatch.setenv("TABLE_NAME", "orders")
+    monkeypatch.setenv("CANDIDATE_SQL_URI", "s3://b/k.sql")
+    monkeypatch.setenv("DBT_POSTGRES_HOST", "localhost")
+    monkeypatch.setenv("DBT_POSTGRES_DB", "warehouse")
+    monkeypatch.setenv("DBT_POSTGRES_USER", "dbt")
+    monkeypatch.setattr("base.validation_runner.load_candidate_sql", lambda: "select 1")
+
+
+def _emitted_doc(out):
+    block = out[out.index(validation_result.SENTINEL_BEGIN):]
+    return json.loads(block.splitlines()[1])
+
+
+class _FakeSQL:
+    def format(self, *a, **k):
+        return self
+
+    def as_string(self, _ctx):
+        return "stmt"
+
+
+def _stub_sql(monkeypatch):
+    """Stub _ensure_schema + psycopg2.sql so the test exercises the emission
+    orchestration without a real connection (as_string needs a real connection)."""
+    monkeypatch.setattr("base.validation_runner._ensure_schema", lambda cur, schema: None)
+    monkeypatch.setattr("base.validation_runner.pg_sql.SQL", lambda *_a, **_k: _FakeSQL())
+    monkeypatch.setattr("base.validation_runner.pg_sql.Identifier", lambda *_a, **_k: _FakeSQL())
+
+
+def test_main_emits_error_block_on_build_failure(monkeypatch, capsys):
+    """A DB/exec error inside the build block makes main() exit 1 AND print an error block."""
+    _set_build_env(monkeypatch)
+    _stub_sql(monkeypatch)
+
+    # cur.execute raises during the build (inside main()'s try) → except emits the block.
+    cur = MagicMock()
+    cur.execute.side_effect = RuntimeError('relation "x" does not exist')
+    fake_conn = MagicMock()
+    fake_conn.cursor.return_value.__enter__.return_value = cur
+    monkeypatch.setattr("base.validation_runner.psycopg2.connect", lambda **k: fake_conn)
+
+    with pytest.raises(SystemExit) as exc:
+        main()
+    assert exc.value.code == 1
+    doc = _emitted_doc(capsys.readouterr().out)
+    assert doc["status"] == "error"
+    assert "does not exist" in doc["message"]
+    assert doc["unique_id"] == "model.orders"
+
+
+def test_main_emits_success_block_on_build(monkeypatch, capsys):
+    """A clean build prints a success block as the last stdout."""
+    _set_build_env(monkeypatch)
+    _stub_sql(monkeypatch)
+
+    cur = MagicMock()
+    fake_conn = MagicMock()
+    fake_conn.cursor.return_value.__enter__.return_value = cur
+    monkeypatch.setattr("base.validation_runner.psycopg2.connect", lambda **k: fake_conn)
+
+    main()
+    doc = _emitted_doc(capsys.readouterr().out)
+    assert doc["status"] == "success"
+    assert doc["unique_id"] == "model.orders"
