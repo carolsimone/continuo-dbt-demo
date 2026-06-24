@@ -10,6 +10,10 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0.0",
+    # validation_runner imports psycopg2 at module scope (it materializes the
+    # candidate node via psycopg2); its emission unit tests patch psycopg2.connect,
+    # so the binary wheel must be importable in the test env (no DB connection opened).
+    "psycopg2-binary>=2.9.0",
 ]
 
 [tool.pytest.ini_options]
