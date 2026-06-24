@@ -1,2 +1,5 @@
 {{ config(materialized='table', tags=['e2e-schedule']) }}
-SELECT * FROM analytics.table_b JOIN analytics.table_c USING (id)
+SELECT *
+FROM analytics.table_b
+JOIN analytics.table_c USING (id)
+JOIN public.silly_error USING (id)
