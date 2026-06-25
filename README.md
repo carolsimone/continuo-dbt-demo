@@ -51,7 +51,8 @@ services/        # one directory per dbt service: dbt_project.yml, profiles.yml 
 dbt-loader/      # the dbt_load library: compile + filter + upload-manifest-to-S3 CLI
                  #   (compile / upload / load); its own pyproject/uv.lock + targets.yaml,
                  #   tests/ (unit), integration/ (real dbt+S3), Dockerfile, docker-compose.test.yml
-scripts/release.sh
+scripts/         # repo CD/utility tooling: release.sh, rebuild_services_from_base.sh,
+                 #   gen_fx_rates_eur.py, tests/ (rebuild-script unit tests), pyproject.toml
 .github/workflows/   # release.yml (deploy) + ci.yml (tests)
 ```
 
@@ -82,8 +83,8 @@ docker compose -f dbt-loader/docker-compose.test.yml up --build --abort-on-conta
 # dbt-base runtime unit tests — no external services:
 cd dbt-base && uv sync --frozen --extra dev && uv run pytest tests/
 
-# Leftover scripts/ tests (from repo root):
-uv run --extra dev pytest tests/
+# scripts/ rebuild-script unit tests — no external services:
+cd scripts && uv sync --frozen --extra dev && uv run pytest tests/
 
 shellcheck scripts/release.sh
 ```
