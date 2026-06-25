@@ -8,7 +8,7 @@ on:
     branches: [main]
     paths:
       - 'services/**'
-      - 'base/**'
+      - 'dbt-base/**'
       - 'dbt-loader/**'
       - '.github/workflows/release.yml'
   workflow_dispatch:
@@ -66,7 +66,7 @@ jobs:
           # images build FROM, so a base change (e.g. validation_runner.py) leaves
           # any service not rebuilt on a stale-base image. The release job fans the
           # rebuild out to all services when base_changed=true.
-          if git diff --name-only "$BEFORE" HEAD -- 'base/' | grep -q .; then
+          if git diff --name-only "$BEFORE" HEAD -- 'dbt-base/' | grep -q .; then
             BASE_CHANGED=true
           else
             BASE_CHANGED=false
@@ -161,7 +161,7 @@ jobs:
       - name: Build and push dbt-base
         uses: docker/build-push-action@v6
         with:
-          context: base
+          context: dbt-base
           push: true
           tags: ${{ secrets.DOCKERHUB_USERNAME }}/dbt-base:latest
           cache-from: type=gha,scope=dbt-base
