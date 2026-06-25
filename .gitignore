@@ -7,6 +7,8 @@
 services/*/manifest.json
 services/*/target/
 services/*/logs/
+# dbt anonymous usage tracking — written during dbt compile
+services/*/.user.yml
 **/__pycache__/
 .venv/
 *.egg-info/
