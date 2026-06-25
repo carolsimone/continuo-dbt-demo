@@ -1,0 +1,42 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  dbt-loader-unit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: dbt-loader
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: astral-sh/setup-uv@v5
+      - name: Unit tests (no external services)
+        run: |
+          uv sync --frozen --extra dev
+          uv run pytest tests/ -v
+
+  dbt-loader-integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build dbt-base (the tests image is FROM dbt-base)
+        run: docker build -t dbt-base:latest base/
+      - name: Integration tests (docker compose)
+        run: |
+          docker compose -f dbt-loader/docker-compose.test.yml up --build \
+            --abort-on-container-exit --exit-code-from tests
+      - name: Tear down
+        if: always()
+        run: docker compose -f dbt-loader/docker-compose.test.yml down -v

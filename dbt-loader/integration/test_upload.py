@@ -1,14 +1,10 @@
 """
-Integration tests for dbt compile+upload pipeline.
-Requires localstack running at S3_ENDPOINT_URL (default: http://localstack:4566).
-Run against the running dbt-compile-and-load container:
-  docker exec -e AWS_ACCESS_KEY_ID=test -e AWS_SECRET_ACCESS_KEY=test \
-    -e AWS_DEFAULT_REGION=us-east-1 \
-    -e S3_ENDPOINT_URL=http://localstack:4566 -e S3_BUCKET=continuo -e S3_ENV=local \
-    -e DBT_POSTGRES_HOST=postgres -e DBT_POSTGRES_PORT=5432 \
-    -e DBT_POSTGRES_DB=continuo_dbt -e DBT_POSTGRES_USER=continuo_svc \
-    -e DBT_POSTGRES_PASSWORD=continuo \
-    dbt-compile-and-load uv run --with pytest pytest tests/test_upload.py -v
+Integration tests for the dbt_load compile+upload pipeline.
+Requires localstack at S3_ENDPOINT_URL (default: http://localstack:4566) + Postgres.
+Run via the docker-compose stack from the dbt-loader/ directory:
+  docker compose -f docker-compose.test.yml up --build \
+    --abort-on-container-exit --exit-code-from tests
+The `services/` example dbt projects are bind-mounted to /app/services by compose.
 """
 import json
 import os
@@ -17,7 +13,7 @@ import subprocess
 import boto3
 import pytest
 
-from dbt_upload.upload import next_version, upload_manifest
+from dbt_load.upload import next_version, upload_manifest
 
 SERVICES_DIR = "/app/services"
 S3_ENDPOINT = os.getenv("S3_ENDPOINT_URL", "http://localstack:4566")
@@ -64,7 +60,7 @@ def test_dbt_compile_service1_succeeds():
 
 def test_upload_and_read_back(s3):
     """compile + upload produces a readable manifest_v1.json in S3."""
-    from dbt_upload.compile import compile_service
+    from dbt_load.compile import compile_service
 
     service_dir = os.path.join(SERVICES_DIR, "service-1")
     assert compile_service(service_dir), "compile_service returned False"
@@ -81,7 +77,7 @@ def test_upload_and_read_back(s3):
 
 def test_all_valid_services_upload(s3):
     """service-1, service-2, service-3 all compile and upload."""
-    from dbt_upload.compile import compile_service
+    from dbt_load.compile import compile_service
 
     valid = ["service-1", "service-2", "service-3"]
     for name in valid:
@@ -148,7 +144,7 @@ def test_upload_manifest_release_mode_writes_canonical_key(tmp_path):
     (shared by contract with continuo's CanonicalManifestKey), with no
     next_version lookup and no sidecar."""
     from unittest.mock import MagicMock
-    from dbt_upload.upload import upload_manifest
+    from dbt_load.upload import upload_manifest
 
     service_dir = tmp_path / "service-1"
     (service_dir / "target").mkdir(parents=True)
@@ -178,7 +174,7 @@ def test_upload_services_release_mode_no_image_tag_required(tmp_path, monkeypatc
     """With release_id set and IMAGE_TAG_PER_SERVICE empty, every service still
     uploads to the canonical <service>/<release_id>/manifest.json with no sidecar."""
     from unittest.mock import MagicMock, patch
-    from dbt_upload.upload import upload_services
+    from dbt_load.upload import upload_services
 
     services = ["service-1", "service-2"]
     service_dirs = []
@@ -202,7 +198,7 @@ def test_upload_services_release_mode_no_image_tag_required(tmp_path, monkeypatc
     }
 
     mock_s3 = MagicMock()
-    with patch("dbt_upload.upload.boto3.client", return_value=mock_s3):
+    with patch("dbt_load.upload.boto3.client", return_value=mock_s3):
         succeeded, failed = upload_services(
             service_dirs, target_config, release_id="rel-xyz"
         )

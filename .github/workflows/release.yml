@@ -9,8 +9,7 @@ on:
     paths:
       - 'services/**'
       - 'base/**'
-      - 'dbt_upload/**'
-      - 'targets.yaml'
+      - 'dbt-loader/**'
       - '.github/workflows/release.yml'
   workflow_dispatch:
 
@@ -200,14 +199,14 @@ jobs:
         with:
           python-version: '3.12'
 
-      # dbt is not a dbt_upload dependency (it ships in the dbt-base image); in CI
-      # install both into the same interpreter so `python -m dbt_upload` (which
+      # dbt is not a dbt_load dependency (it ships in the dbt-base image); in CI
+      # install both into the same interpreter so `python -m dbt_load` (which
       # shells out to `dbt compile`) finds dbt on PATH.
-      - name: Install dbt + dbt_upload
+      - name: Install dbt + dbt_load
         if: needs.detect.outputs.skip_release != 'true'
         run: |
           pip install --no-cache-dir "dbt-core==1.12.0b1" "dbt-postgres==1.10.0"
-          pip install --no-cache-dir -e .
+          pip install --no-cache-dir -e ./dbt-loader
 
       # Compile the changed service (against the ephemeral Postgres) and upload
       # its manifest to the Hetzner object store at the canonical key
@@ -222,7 +221,7 @@ jobs:
           AWS_SECRET_ACCESS_KEY: ${{ secrets.HETZNER_S3_SECRET_ACCESS_KEY }}
           DBT_POSTGRES_HOST: localhost
         run: |
-          python -m dbt_upload load \
+          python -m dbt_load load \
             "services/${{ needs.detect.outputs.service }}" \
             --target hetzner \
             --release-id "${{ needs.detect.outputs.release_id }}"

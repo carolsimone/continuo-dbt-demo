@@ -1,6 +1,6 @@
 import os
 import pytest
-from dbt_upload.config import load_target, resolve_service_dirs
+from dbt_load.config import load_target, resolve_service_dirs
 
 
 class TestLoadTarget:
