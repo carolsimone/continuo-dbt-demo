@@ -22,7 +22,7 @@ import psycopg2
 from psycopg2 import sql as pg_sql
 
 try:
-    from base import validation_result  # repo/test context (pythonpath=".")
+    from dbt_base import validation_result  # repo/test context (pythonpath=".")
 except ModuleNotFoundError:  # pragma: no cover - flat layout inside the image
     import validation_result
 
