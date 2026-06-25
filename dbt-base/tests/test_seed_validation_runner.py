@@ -1,8 +1,8 @@
 """Unit tests for the seed validation wrapper (no real dbt or DB)."""
 import json
 
-import base.seed_validation_runner as swr
-from base import validation_result
+import dbt_base.seed_validation_runner as swr
+from dbt_base import validation_result
 
 
 def test_emit_from_run_results_projects_and_frames(capsys, tmp_path):

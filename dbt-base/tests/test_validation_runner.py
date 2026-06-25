@@ -7,8 +7,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from base import validation_result
-from base.validation_runner import load_candidate_sql, _parse_s3_uri, main
+from dbt_base import validation_result
+from dbt_base.validation_runner import load_candidate_sql, _parse_s3_uri, main
 
 
 # ---------------------------------------------------------------------------
@@ -58,7 +58,7 @@ def test_load_candidate_sql_fetches_from_s3(monkeypatch):
     mock_s3 = MagicMock()
     mock_s3.get_object.return_value = {"Body": mock_body}
 
-    with patch("base.validation_runner.boto3.client", return_value=mock_s3) as mock_client:
+    with patch("dbt_base.validation_runner.boto3.client", return_value=mock_s3) as mock_client:
         result = load_candidate_sql()
 
     assert result == "SELECT 1"
@@ -75,7 +75,7 @@ def test_load_candidate_sql_returns_raw_body_without_stripping(monkeypatch):
     mock_s3 = MagicMock()
     mock_s3.get_object.return_value = {"Body": mock_body}
 
-    with patch("base.validation_runner.boto3.client", return_value=mock_s3):
+    with patch("dbt_base.validation_runner.boto3.client", return_value=mock_s3):
         result = load_candidate_sql()
 
     # load_candidate_sql decodes but does NOT strip — that is main()'s job
@@ -92,7 +92,7 @@ def test_load_candidate_sql_no_uri_returns_empty(monkeypatch):
     monkeypatch.delenv("CANDIDATE_SQL_URI", raising=False)
 
     mock_client = MagicMock()
-    with patch("base.validation_runner.boto3.client", mock_client):
+    with patch("dbt_base.validation_runner.boto3.client", mock_client):
         result = load_candidate_sql()
 
     assert result == ""
@@ -112,7 +112,7 @@ def test_main_missing_uri_fails_validation(monkeypatch):
     monkeypatch.delenv("CANDIDATE_SQL_URI", raising=False)
 
     mock_client = MagicMock()
-    with patch("base.validation_runner.boto3.client", mock_client):
+    with patch("dbt_base.validation_runner.boto3.client", mock_client):
         with pytest.raises(SystemExit) as exc:
             main()
 
@@ -125,7 +125,7 @@ def test_load_candidate_sql_empty_uri_returns_empty(monkeypatch):
     monkeypatch.setenv("CANDIDATE_SQL_URI", "")
 
     mock_client = MagicMock()
-    with patch("base.validation_runner.boto3.client", mock_client):
+    with patch("dbt_base.validation_runner.boto3.client", mock_client):
         result = load_candidate_sql()
 
     assert result == ""
@@ -145,7 +145,7 @@ def _set_build_env(monkeypatch):
     monkeypatch.setenv("DBT_POSTGRES_HOST", "localhost")
     monkeypatch.setenv("DBT_POSTGRES_DB", "warehouse")
     monkeypatch.setenv("DBT_POSTGRES_USER", "dbt")
-    monkeypatch.setattr("base.validation_runner.load_candidate_sql", lambda: "select 1")
+    monkeypatch.setattr("dbt_base.validation_runner.load_candidate_sql", lambda: "select 1")
 
 
 def _emitted_doc(out):
@@ -164,9 +164,9 @@ class _FakeSQL:
 def _stub_sql(monkeypatch):
     """Stub _ensure_schema + psycopg2.sql so the test exercises the emission
     orchestration without a real connection (as_string needs a real connection)."""
-    monkeypatch.setattr("base.validation_runner._ensure_schema", lambda cur, schema: None)
-    monkeypatch.setattr("base.validation_runner.pg_sql.SQL", lambda *_a, **_k: _FakeSQL())
-    monkeypatch.setattr("base.validation_runner.pg_sql.Identifier", lambda *_a, **_k: _FakeSQL())
+    monkeypatch.setattr("dbt_base.validation_runner._ensure_schema", lambda cur, schema: None)
+    monkeypatch.setattr("dbt_base.validation_runner.pg_sql.SQL", lambda *_a, **_k: _FakeSQL())
+    monkeypatch.setattr("dbt_base.validation_runner.pg_sql.Identifier", lambda *_a, **_k: _FakeSQL())
 
 
 def test_main_emits_error_block_on_build_failure(monkeypatch, capsys):
@@ -179,7 +179,7 @@ def test_main_emits_error_block_on_build_failure(monkeypatch, capsys):
     cur.execute.side_effect = RuntimeError('relation "x" does not exist')
     fake_conn = MagicMock()
     fake_conn.cursor.return_value.__enter__.return_value = cur
-    monkeypatch.setattr("base.validation_runner.psycopg2.connect", lambda **k: fake_conn)
+    monkeypatch.setattr("dbt_base.validation_runner.psycopg2.connect", lambda **k: fake_conn)
 
     with pytest.raises(SystemExit) as exc:
         main()
@@ -198,7 +198,7 @@ def test_main_emits_success_block_on_build(monkeypatch, capsys):
     cur = MagicMock()
     fake_conn = MagicMock()
     fake_conn.cursor.return_value.__enter__.return_value = cur
-    monkeypatch.setattr("base.validation_runner.psycopg2.connect", lambda **k: fake_conn)
+    monkeypatch.setattr("dbt_base.validation_runner.psycopg2.connect", lambda **k: fake_conn)
 
     main()
     doc = _emitted_doc(capsys.readouterr().out)
@@ -216,7 +216,7 @@ def test_main_emits_error_block_on_connection_failure(monkeypatch, capsys):
 
     def _boom(**_k):
         raise RuntimeError("could not connect to server: Connection refused")
-    monkeypatch.setattr("base.validation_runner.psycopg2.connect", _boom)
+    monkeypatch.setattr("dbt_base.validation_runner.psycopg2.connect", _boom)
 
     with pytest.raises(SystemExit) as exc:
         main()
@@ -233,7 +233,7 @@ def test_main_emits_error_block_on_missing_db_env(monkeypatch, capsys):
     monkeypatch.delenv("DBT_POSTGRES_HOST", raising=False)
     # connect must not be reached when a required connection var is missing.
     monkeypatch.setattr(
-        "base.validation_runner.psycopg2.connect",
+        "dbt_base.validation_runner.psycopg2.connect",
         lambda **_k: pytest.fail("connect should not be called when DB env is missing"),
     )
 

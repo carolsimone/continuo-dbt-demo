@@ -19,14 +19,14 @@ COPY macros/ /project/macros/
 # schema from execution-time-rewritten compiled SQL. Inherited by every service
 # image (FROM dbt-base); continuo's executor invokes it as the validation Job
 # command for model/snapshot nodes instead of `dbt run`.
-COPY validation_runner.py /validation_runner.py
+COPY dbt_base/validation_runner.py /validation_runner.py
 
 # Shared structured-result contract + the seed validation wrapper. Both validation
 # entrypoints print a sentinel-framed result block on stdout; the seed wrapper runs
 # `dbt seed --empty` and projects target/run_results.json into that contract. Run
 # flat at /, so the contract module is imported via the import shim in each script.
-COPY validation_result.py /validation_result.py
-COPY seed_validation_runner.py /seed_validation_runner.py
+COPY dbt_base/validation_result.py /validation_result.py
+COPY dbt_base/seed_validation_runner.py /seed_validation_runner.py
 
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh

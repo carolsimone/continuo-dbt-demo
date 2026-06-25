@@ -18,7 +18,7 @@ import subprocess
 import sys
 
 try:
-    from base import validation_result  # repo/test context (pythonpath=".")
+    from dbt_base import validation_result  # repo/test context (pythonpath=".")
 except ModuleNotFoundError:  # pragma: no cover - flat layout inside the image
     import validation_result
 

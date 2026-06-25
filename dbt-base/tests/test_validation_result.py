@@ -1,7 +1,7 @@
 """Unit tests for the cross-language validation-result contract helpers."""
 import json
 
-from base.validation_result import (
+from dbt_base.validation_result import (
     SENTINEL_BEGIN,
     SENTINEL_END,
     result_block,
