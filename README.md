@@ -56,7 +56,16 @@ scripts/         # repo CD/utility tooling: release.sh, rebuild_services_from_ba
 .github/workflows/   # release.yml (deploy) + ci.yml (tests)
 ```
 
-The services fall into two groups. `core`, `finance`, and `marketing` are clean example workloads. `service-1`, `service-2`, and `service-3` are copied from continuo's e2e fixtures and include failure-demo models: the `ftable_*` models (tagged `e2e-schedule-failure`) read cross-service tables straight out of the shared `analytics` schema rather than via `ref()`, forming the service-2/service-3 cycle noted above. Run in isolation, an upstream table isn't there yet, so they fail at run time — which is exactly what continuo uses to exercise failure paths and demo the reject path. All services materialize into the **`analytics`** schema (set in each `profiles.yml`).
+The services fall into two groups. `core`, `finance`, and `marketing` are clean example workloads — the part to read if you're modelling how your own producer integrates. `service-1`, `service-2`, and `service-3` are copied from continuo's e2e fixtures: they carry deliberate cross-service dependencies (including a service-2 ↔ service-3 cycle) and probe / failure nodes whose only purpose is to exercise continuo's validation and reject paths. They are testing scaffolding, not a modelling example. All services materialize into the **`analytics`** schema (set in each `profiles.yml`).
+
+### Cross-service references (important)
+
+A continuo producer's services are **separate dbt projects**, and dbt's `{{ ref() }}` only resolves nodes *within one project*. So a model that depends on a table built by **another** service cannot `ref()` it — that fails at `dbt compile` with `depends on a node named '…' which was not found`. The convention:
+
+- **Within a service** (depends on a seed/model in the same project): use `{{ ref('name') }}`. dbt resolves it and orders the build.
+- **Across services** (depends on a table another service produces in the shared `analytics` schema): reference it by its **raw schema-qualified name** — `FROM analytics.table_a` — never `ref()`. continuo sequences the cross-service build itself (via the validation closure and `service_prod` pointers); dbt never needs the upstream in its own graph.
+
+This is the easiest integration mistake to make — even an automated fixer once "corrected" a cross-service `FROM analytics.table_a` into `{{ ref('table_a') }}` and broke the build.
 
 ## Required CI secrets
 
