@@ -3,9 +3,9 @@ import logging
 import os
 import sys
 
-from dbt_upload.compile import compile_services
-from dbt_upload.config import load_target, resolve_service_dirs
-from dbt_upload.upload import upload_services
+from dbt_load.compile import compile_services
+from dbt_load.config import load_target, resolve_service_dirs
+from dbt_load.upload import upload_services
 
 logger = logging.getLogger(__name__)
 
@@ -13,8 +13,8 @@ logger = logging.getLogger(__name__)
 def _find_targets_yaml() -> str:
     """Locate targets.yaml relative to this package."""
     here = os.path.dirname(os.path.abspath(__file__))
-    # In Docker: /app/dbt_upload/ -> /app/targets.yaml
-    # In dev:    dbt/dbt_upload/  -> dbt/targets.yaml
+    # In Docker: /app/dbt_load/ -> /app/targets.yaml
+    # In dev:    dbt/dbt_load/  -> dbt/targets.yaml
     candidate = os.path.join(os.path.dirname(here), "targets.yaml")
     if os.path.exists(candidate):
         return candidate
@@ -34,7 +34,7 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     parser = argparse.ArgumentParser(
-        prog="dbt_upload",
+        prog="dbt_load",
         description="Compile dbt services and upload manifests to S3",
     )
     subparsers = parser.add_subparsers(dest="command", required=True)

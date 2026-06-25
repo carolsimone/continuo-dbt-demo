@@ -1,0 +1,19 @@
+# NEVER commit real credentials here. The localstack target below uses dummy
+# `test`/`test` keys on purpose. For real targets (e.g. hetzner), leave
+# access_key_id/secret_access_key out of this file and supply them at runtime
+# via the AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY env vars, which override any
+# value here (see dbt_upload/config.py:load_target).
+targets:
+  localstack:
+    endpoint_url: http://localstack:4566
+    bucket: continuo
+    region: us-east-1
+    env: local
+    access_key_id: test
+    secret_access_key: test
+
+  hetzner:
+    endpoint_url: https://nbg1.your-objectstorage.com
+    bucket: continuo-dev
+    region: eu-central-1
+    env: dev

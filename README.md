@@ -26,10 +26,10 @@ On every push to `services/**` (or manual dispatch), `.github/workflows/release.
 continuo models a release as a **single changed service**. The request body is:
 
 ```json
-{"release_id": "rel-<sha>-<run>", "service": "service-3", "image_tag": "<sha>", "bootstrap": false}
+{"release_id": "rel-<sha>-<run>", "service": "service-3", "image_tag": "<sha>", "bootstrap": false, "repo": "<owner>/<repo>", "commit_sha": "<full-sha>"}
 ```
 
-- `service` and `image_tag` are **single values**, not maps. There is **no `manifests_uri`** in the body — the controller derives the S3 key itself from `bucket + service + release_id` (continuo's `CanonicalManifestKey`). There is **no `service_metadata.json` sidecar**; the image tag travels in this body, not in S3.
+- `service` and `image_tag` are **single values**, not maps. `repo` and `commit_sha` identify the source push (`github.repository` / `github.sha`). There is **no `manifests_uri`** in the body — the controller derives the S3 key itself from `bucket + service + release_id` (continuo's `CanonicalManifestKey`). There is **no `service_metadata.json` sidecar**; the image tag travels in this body, not in S3.
 - The controller replies `202 Accepted` with `{"release_id": "...", "status": "received"}`.
 - The script then polls `GET /releases/<release_id>` until `status` is terminal: `promoted` (success) or `rejected` (failure). The other services' manifests are already in S3 from their own releases; the controller reconstructs the full set via the live `service_prod` pointers.
 
@@ -54,7 +54,7 @@ scripts/release.sh
 .github/workflows/release.yml
 ```
 
-The services fall into two groups. `core`, `finance`, and `marketing` are clean example workloads. `service-1`, `service-2`, and `service-3` are copied from continuo's e2e fixtures and include deliberately-broken models (the `ftable_*` models in service-2/3 JOIN a non-existent table) that continuo uses to exercise failure paths — they fail at run time and are useful for demoing the reject path. All services materialize into the **`analytics`** schema (set in each `profiles.yml`).
+The services fall into two groups. `core`, `finance`, and `marketing` are clean example workloads. `service-1`, `service-2`, and `service-3` are copied from continuo's e2e fixtures and include failure-demo models: the `ftable_*` models (tagged `e2e-schedule-failure`) read cross-service tables straight out of the shared `analytics` schema rather than via `ref()`, forming the service-2/service-3 cycle noted above. Run in isolation, an upstream table isn't there yet, so they fail at run time — which is exactly what continuo uses to exercise failure paths and demo the reject path. All services materialize into the **`analytics`** schema (set in each `profiles.yml`).
 
 ## Required CI secrets
 
