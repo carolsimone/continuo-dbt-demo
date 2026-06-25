@@ -18,7 +18,7 @@ On every push to `services/**` (or manual dispatch), `.github/workflows/release.
 1. **Builds + pushes** the shared `dbt-base` image and **the one changed service's** image to Docker Hub as `<DOCKERHUB_USERNAME>/<service>:<short-sha>` (+ `:latest`). The name/tag is the contract: continuo's executor launches dbt jobs as `<DOCKERHUB_USERNAME>/<service_name>:<image_tag>`. Only the changed service gets a new image; the other services keep their current prod tags (continuo reuses them via its `service_prod` pointers).
 
    **Base-change fan-out.** When a push changes `base/**` (the shared `dbt-base` — e.g. `validation_runner.py` or a shared macro), the one-changed-service rule isn't enough: every *other* service still runs from an image built on the **old** base, and since a changed-node validation spans the full cross-service closure (service-2/service-3 form a cycle), those stale-base images make releases reject at `validating` with no way to self-heal. So on any `base/**` change the workflow runs `scripts/rebuild_services_from_base.sh`, which re-bakes **every** service image FROM the fresh base and re-pushes it under the tag continuo's prod pointers already reference — the short SHA of the last commit that touched each `services/<svc>/`. No `service_prod` pointer moves; combined with the validation Job's `imagePullPolicy: Always`, every validation and run then re-pulls the fresh base. A base-only push (no service changed) runs just this fan-out and posts no release.
-2. **Compiles** the changed service (`dbt compile` against an ephemeral Postgres — no data needed, compile only resolves refs/jinja into `manifest.json`) and **uploads** its manifest to the Hetzner object store at the canonical key `<service>/<release_id>/manifest.json` (via `dbt_upload`, `hetzner` target in `targets.yaml`). The manifest is filtered before upload: only `model` and `seed` nodes are kept, and any node tagged `local_stub` is dropped. The image tag is **not** stored in S3.
+2. **Compiles** the changed service (`dbt compile` against an ephemeral Postgres — no data needed, compile only resolves refs/jinja into `manifest.json`) and **uploads** its manifest to the Hetzner object store at the canonical key `<service>/<release_id>/manifest.json` (via `dbt_load`, `hetzner` target in `targets.yaml`). The manifest is filtered before upload: only `model` and `seed` nodes are kept, and any node tagged `local_stub` is dropped. The image tag is **not** stored in S3.
 3. **Drives the release** (`scripts/release.sh`): SSHes to `continuo-server`, port-forwards the internal `release-controller` ClusterIP (`:8088`), reads `GET /current-prod`, then `POST /releases` and **polls to a terminal status — failing the deploy on `rejected`**.
 
 ### The release contract (what `scripts/release.sh` sends)
@@ -47,11 +47,11 @@ continuo's release API has no public domain yet — it is an internal `ClusterIP
 base/            # dbt-base image: pinned dbt-core/dbt-postgres + shared macros (generate_schema_name)
 services/        # one directory per dbt service: dbt_project.yml, profiles.yml (schema: analytics),
                  #   models/, seeds/, Dockerfile (FROM <user>/dbt-base:latest)
-dbt_upload/      # compile + filter + upload-manifest-to-S3 CLI (compile / upload / load subcommands)
-targets.yaml     # S3 targets (localstack for local; hetzner → continuo-dev bucket)
-Dockerfile.upload, pyproject.toml, uv.lock, tests/   # dbt_upload packaging + its tests
+dbt-loader/      # the dbt_load library: compile + filter + upload-manifest-to-S3 CLI
+                 #   (compile / upload / load); its own pyproject/uv.lock + targets.yaml,
+                 #   tests/ (unit), integration/ (real dbt+S3), Dockerfile, docker-compose.test.yml
 scripts/release.sh
-.github/workflows/release.yml
+.github/workflows/   # release.yml (deploy) + ci.yml (tests)
 ```
 
 The services fall into two groups. `core`, `finance`, and `marketing` are clean example workloads. `service-1`, `service-2`, and `service-3` are copied from continuo's e2e fixtures and include failure-demo models: the `ftable_*` models (tagged `e2e-schedule-failure`) read cross-service tables straight out of the shared `analytics` schema rather than via `ref()`, forming the service-2/service-3 cycle noted above. Run in isolation, an upstream table isn't there yet, so they fail at run time — which is exactly what continuo uses to exercise failure paths and demo the reject path. All services materialize into the **`analytics`** schema (set in each `profiles.yml`).
@@ -71,9 +71,17 @@ Configure these in the repo's Actions secrets before the workflow can run:
 ## Local checks
 
 ```bash
-uv sync --frozen
-uv run pytest tests/           # dbt_upload unit + integration tests
+# Library (dbt_load) unit tests — no external services:
+cd dbt-loader && uv sync --frozen --extra dev && uv run pytest tests/
+
+# Library integration tests (real dbt compile + S3) via docker compose:
+docker build -t dbt-base:latest base/
+docker compose -f dbt-loader/docker-compose.test.yml up --build --abort-on-container-exit --exit-code-from tests
+
+# Leftover base/ + scripts/ tests (from repo root):
+uv run --extra dev pytest tests/
+
 shellcheck scripts/release.sh
 ```
 
-The integration tests in `tests/test_upload.py` exercise real `dbt compile` and S3 uploads and expect localstack reachable at `S3_ENDPOINT_URL` (default `http://localstack:4566`) plus a Postgres for compile; see the header of that file for the full `docker exec` invocation. The CLI, config, compile-wrapper, and per-release upload-layout tests run without any external services.
+The integration tests in `dbt-loader/integration/test_upload.py` exercise real `dbt compile` and S3 uploads and run via the compose stack above (localstack + Postgres + the `dbt-base`-derived tool image). The CLI, config, compile-wrapper, and per-release upload-layout tests in `dbt-loader/tests/` run without any external services. The leftover `tests/` at the repo root cover the `dbt-base` validation runner and the rebuild script.
