@@ -89,4 +89,4 @@ cd scripts && uv sync --frozen --extra dev && uv run pytest tests/
 shellcheck scripts/release.sh
 ```
 
-The integration tests in `dbt-loader/integration/test_upload.py` exercise real `dbt compile` and S3 uploads and run via the compose stack above (localstack + Postgres + the `dbt-base`-derived tool image). The CLI, config, compile-wrapper, and per-release upload-layout tests in `dbt-loader/tests/` run without any external services. The leftover `tests/` at the repo root cover the `dbt-base` validation runner and the rebuild script.
+The integration tests in `dbt-loader/integration/test_upload.py` exercise real `dbt compile` and S3 uploads and run via the compose stack above (localstack + Postgres + the `dbt-base`-derived tool image). The CLI, config, compile-wrapper, and per-release upload-layout tests in `dbt-loader/tests/` run without any external services. The `dbt-base` validation-runner tests live in `dbt-base/tests/`, and the rebuild-script tests in `scripts/tests/` — each component owns its own tests (there is no repo-root `tests/`).
