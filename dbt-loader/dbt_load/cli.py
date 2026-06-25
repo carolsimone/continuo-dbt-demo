@@ -13,6 +13,12 @@ logger = logging.getLogger(__name__)
 def _find_targets_yaml() -> str:
     """Locate targets.yaml relative to this package."""
     here = os.path.dirname(os.path.abspath(__file__))
+    # Non-editable wheel install: targets.yaml is force-included as package data
+    # at dbt_load/targets.yaml (see pyproject.toml). Editable/dev/Docker layouts
+    # have no targets.yaml inside the package, so this falls through to the parent.
+    packaged = os.path.join(here, "targets.yaml")
+    if os.path.exists(packaged):
+        return packaged
     # In Docker: /app/dbt_load/        -> /app/targets.yaml
     # In dev:    dbt-loader/dbt_load/  -> dbt-loader/targets.yaml
     candidate = os.path.join(os.path.dirname(here), "targets.yaml")
