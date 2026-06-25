@@ -1,5 +1,5 @@
-# Minimal test harness for the leftover base/ + scripts/ tests that have not yet
-# been carved into their own components (Phase C/D). The dbt_load library has its
+# Minimal test harness for the leftover scripts/ tests that have not yet
+# been carved into their own component (Phase D). The dbt_load library has its
 # own packaging under dbt-loader/. This file is intentionally NOT a distributable
 # package — it only provides pythonpath + test deps so `tests/` keeps running.
 [project]
