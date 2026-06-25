@@ -2,7 +2,7 @@
 # `test`/`test` keys on purpose. For real targets (e.g. hetzner), leave
 # access_key_id/secret_access_key out of this file and supply them at runtime
 # via the AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY env vars, which override any
-# value here (see dbt_upload/config.py:load_target).
+# value here (see dbt_load/config.py:load_target).
 targets:
   localstack:
     endpoint_url: http://localstack:4566
