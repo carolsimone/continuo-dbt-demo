@@ -99,3 +99,24 @@ shellcheck scripts/release.sh
 ```
 
 The integration tests in `dbt-loader/integration/test_upload.py` exercise real `dbt compile` and S3 uploads and run via the compose stack above (localstack + Postgres + the `dbt-base`-derived tool image). The CLI, config, compile-wrapper, and per-release upload-layout tests in `dbt-loader/tests/` run without any external services. The `dbt-base` validation-runner tests live in `dbt-base/tests/`, and the rebuild-script tests in `scripts/tests/` — each component owns its own tests (there is no repo-root `tests/`).
+
+## Run the loader against localstack
+
+The compose stack above only runs the integration *tests*. To exercise the `dbt_load` CLI itself — compile a service and upload its manifest to the local S3 — override the test command and run it **inside the same network**, where `targets.yaml`'s `localstack` target (`http://localstack:4566`) resolves. `run` brings up postgres + localstack (healthy) first:
+
+```bash
+docker build -t dbt-base:latest dbt-base/        # the tests image is FROM dbt-base
+
+docker compose -f dbt-loader/docker-compose.test.yml run --rm --build tests \
+  uv run python -m dbt_load load services/service-1 --target localstack --release-id rel-demo
+# -> Uploaded service-1 -> s3://continuo/service-1/rel-demo/manifest.json
+```
+
+The dependency containers stay up after `run`, so you can inspect the result, then tear the stack down:
+
+```bash
+docker compose -f dbt-loader/docker-compose.test.yml exec localstack awslocal s3 ls s3://continuo --recursive
+docker compose -f dbt-loader/docker-compose.test.yml down -v
+```
+
+Drop `--release-id` to write the versioned key (`local/manifest/<service>/manifest_v1.json`) instead of the per-release canonical one (`<service>/<release-id>/manifest.json`). localstack has no host-published port, so reach the bucket via `… exec localstack awslocal …` rather than from your host shell.
