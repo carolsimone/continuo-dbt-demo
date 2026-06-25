@@ -13,8 +13,8 @@ logger = logging.getLogger(__name__)
 def _find_targets_yaml() -> str:
     """Locate targets.yaml relative to this package."""
     here = os.path.dirname(os.path.abspath(__file__))
-    # In Docker: /app/dbt_load/ -> /app/targets.yaml
-    # In dev:    dbt/dbt_load/  -> dbt/targets.yaml
+    # In Docker: /app/dbt_load/        -> /app/targets.yaml
+    # In dev:    dbt-loader/dbt_load/  -> dbt-loader/targets.yaml
     candidate = os.path.join(os.path.dirname(here), "targets.yaml")
     if os.path.exists(candidate):
         return candidate
