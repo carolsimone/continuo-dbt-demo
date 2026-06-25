@@ -120,3 +120,16 @@ docker compose -f dbt-loader/docker-compose.test.yml down -v
 ```
 
 Drop `--release-id` to write the versioned key (`local/manifest/<service>/manifest_v1.json`) instead of the per-release canonical one (`<service>/<release-id>/manifest.json`). localstack has no host-published port, so reach the bucket via `… exec localstack awslocal …` rather than from your host shell.
+
+### Targeting the real Hetzner bucket
+
+The same command can upload to the real object store with `--target hetzner` (endpoint + bucket come from `targets.yaml`). That target ships **no keys** on purpose — `config.py` reads `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` from the environment (the `HETZNER_S3_*` values CI uses) and errors if they're absent:
+
+```bash
+docker compose -f dbt-loader/docker-compose.test.yml run --rm --build \
+  -e AWS_ACCESS_KEY_ID=<hetzner-key> -e AWS_SECRET_ACCESS_KEY=<hetzner-secret> \
+  tests \
+  uv run python -m dbt_load load services/service-1 --target hetzner --release-id rel-demo
+```
+
+This is exactly what `release.yml`'s compile-and-upload step runs, just by hand. Unlike localstack it writes to the **real, shared `continuo-dev` bucket**, so use a unique `--release-id` to avoid overwriting an existing release's canonical key. Uploading a manifest does **not** trigger a release — that's the separate `POST /releases` in `scripts/release.sh`.
