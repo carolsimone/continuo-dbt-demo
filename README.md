@@ -56,7 +56,16 @@ scripts/         # repo CD/utility tooling: release.sh, rebuild_services_from_ba
 .github/workflows/   # release.yml (deploy) + ci.yml (tests)
 ```
 
-The services fall into two groups. `core`, `finance`, and `marketing` are clean example workloads. `service-1`, `service-2`, and `service-3` are copied from continuo's e2e fixtures and include failure-demo models: the `ftable_*` models (tagged `e2e-schedule-failure`) read cross-service tables straight out of the shared `analytics` schema rather than via `ref()`, forming the service-2/service-3 cycle noted above. Run in isolation, an upstream table isn't there yet, so they fail at run time — which is exactly what continuo uses to exercise failure paths and demo the reject path. All services materialize into the **`analytics`** schema (set in each `profiles.yml`).
+The services fall into two groups. `core`, `finance`, and `marketing` are clean example workloads — the part to read if you're modelling how your own producer integrates. `service-1`, `service-2`, and `service-3` are copied from continuo's e2e fixtures: they carry deliberate cross-service dependencies (including a service-2 ↔ service-3 cycle) and probe / failure nodes whose only purpose is to exercise continuo's validation and reject paths. They are testing scaffolding, not a modelling example. All services materialize into the **`analytics`** schema (set in each `profiles.yml`).
+
+### Cross-service references (important)
+
+A continuo producer's services are **separate dbt projects**, and dbt's `{{ ref() }}` only resolves nodes *within one project*. So a model that depends on a table built by **another** service cannot `ref()` it — that fails at `dbt compile` with `depends on a node named '…' which was not found`. The convention:
+
+- **Within a service** (depends on a seed/model in the same project): use `{{ ref('name') }}`. dbt resolves it and orders the build.
+- **Across services** (depends on a table another service produces in the shared `analytics` schema): reference it by its **raw schema-qualified name** — `FROM analytics.table_a` — never `ref()`. continuo sequences the cross-service build itself (via the validation closure and `service_prod` pointers); dbt never needs the upstream in its own graph.
+
+This is the easiest integration mistake to make — even an automated fixer once "corrected" a cross-service `FROM analytics.table_a` into `{{ ref('table_a') }}` and broke the build.
 
 ## Required CI secrets
 
@@ -90,3 +99,37 @@ shellcheck scripts/release.sh
 ```
 
 The integration tests in `dbt-loader/integration/test_upload.py` exercise real `dbt compile` and S3 uploads and run via the compose stack above (localstack + Postgres + the `dbt-base`-derived tool image). The CLI, config, compile-wrapper, and per-release upload-layout tests in `dbt-loader/tests/` run without any external services. The `dbt-base` validation-runner tests live in `dbt-base/tests/`, and the rebuild-script tests in `scripts/tests/` — each component owns its own tests (there is no repo-root `tests/`).
+
+## Run the loader against localstack
+
+The compose stack above only runs the integration *tests*. To exercise the `dbt_load` CLI itself — compile a service and upload its manifest to the local S3 — override the test command and run it **inside the same network**, where `targets.yaml`'s `localstack` target (`http://localstack:4566`) resolves. `run` brings up postgres + localstack (healthy) first:
+
+```bash
+docker build -t dbt-base:latest dbt-base/        # the tests image is FROM dbt-base
+
+docker compose -f dbt-loader/docker-compose.test.yml run --rm --build tests \
+  uv run python -m dbt_load load services/service-1 --target localstack --release-id rel-demo
+# -> Uploaded service-1 -> s3://continuo/service-1/rel-demo/manifest.json
+```
+
+The dependency containers stay up after `run`, so you can inspect the result, then tear the stack down:
+
+```bash
+docker compose -f dbt-loader/docker-compose.test.yml exec localstack awslocal s3 ls s3://continuo --recursive
+docker compose -f dbt-loader/docker-compose.test.yml down -v
+```
+
+Drop `--release-id` to write the versioned key (`local/manifest/<service>/manifest_v1.json`) instead of the per-release canonical one (`<service>/<release-id>/manifest.json`). localstack has no host-published port, so reach the bucket via `… exec localstack awslocal …` rather than from your host shell.
+
+### Targeting the real Hetzner bucket
+
+The same command can upload to the real object store with `--target hetzner` (endpoint + bucket come from `targets.yaml`). That target ships **no keys** on purpose — `config.py` reads `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` from the environment (the `HETZNER_S3_*` values CI uses) and errors if they're absent:
+
+```bash
+docker compose -f dbt-loader/docker-compose.test.yml run --rm --build \
+  -e AWS_ACCESS_KEY_ID=<hetzner-key> -e AWS_SECRET_ACCESS_KEY=<hetzner-secret> \
+  tests \
+  uv run python -m dbt_load load services/service-1 --target hetzner --release-id rel-demo
+```
+
+This is exactly what `release.yml`'s compile-and-upload step runs, just by hand. Unlike localstack it writes to the **real, shared `continuo-dev` bucket**, so use a unique `--release-id` to avoid overwriting an existing release's canonical key. Uploading a manifest does **not** trigger a release — that's the separate `POST /releases` in `scripts/release.sh`.
