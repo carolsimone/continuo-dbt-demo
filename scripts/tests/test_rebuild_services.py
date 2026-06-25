@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-SCRIPT = Path(__file__).resolve().parent.parent / "scripts" / "rebuild_services_from_base.sh"
+SCRIPT = Path(__file__).resolve().parent.parent / "rebuild_services_from_base.sh"
 
 
 def _git(repo: Path, *args: str) -> str:

@@ -43,6 +43,23 @@ jobs:
           uv sync --frozen --extra dev
           uv run pytest tests/ -v
 
+  scripts-unit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: scripts
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: astral-sh/setup-uv@v5
+      - name: rebuild-script unit tests (no external services)
+        run: |
+          uv sync --frozen --extra dev
+          uv run pytest tests/ -v
+
   dbt-loader-integration:
     runs-on: ubuntu-latest
     timeout-minutes: 20
