@@ -1,12 +1,12 @@
-FROM dbt-base:latest
+FROM python:3.12-slim
 
-# Clear the inherited dbt-base entrypoint; callers use docker exec / compose
-# command with explicit commands.
-ENTRYPOINT []
+# dbt is not a dbt_load dependency — the integration tests shell out to
+# `dbt compile` against the mounted services, so dbt must be on PATH. Install it
+# system-wide (the same pins the services use); the project's own deps come from
+# uv below. No boto3/validator: dbt-loader only compiles + uploads manifests.
+RUN pip install --no-cache-dir "dbt-core==1.12.0b1" "dbt-postgres==1.10.0" uv
 
 WORKDIR /app
-
-RUN pip install --no-cache-dir uv
 
 COPY pyproject.toml uv.lock ./
 # Install dependencies only (cached layer) before the source is present.
