@@ -47,7 +47,7 @@ services/        # one directory per dbt service: dbt_project.yml, profiles.yml 
 dbt-loader/      # the dbt_load library: compile + filter + upload-manifest-to-S3 CLI
                  #   (compile / upload / load); its own pyproject/uv.lock + targets.yaml,
                  #   tests/ (unit), integration/ (real dbt+S3), Dockerfile, docker-compose.test.yml
-scripts/         # repo CD/utility tooling: release.sh, gen_fx_rates_eur.py, pyproject.toml
+scripts/         # repo CD/utility tooling: release.sh, gen_fx_rates_eur.py
 .github/workflows/   # release.yml (deploy) + ci.yml (tests)
 ```
 
