@@ -8,7 +8,6 @@ on:
     branches: [main]
     paths:
       - 'services/**'
-      - 'dbt-base/**'
       - 'dbt-loader/**'
       - '.github/workflows/release.yml'
   workflow_dispatch:
@@ -29,7 +28,6 @@ jobs:
     outputs:
       skip: ${{ steps.ids.outputs.skip }}
       skip_release: ${{ steps.ids.outputs.skip_release }}
-      base_changed: ${{ steps.ids.outputs.base_changed }}
       service: ${{ steps.ids.outputs.service }}
       image_tag: ${{ steps.ids.outputs.image_tag }}
       tag: ${{ steps.ids.outputs.tag }}
@@ -61,18 +59,6 @@ jobs:
             echo "::error::cannot determine previous commit to diff against"; exit 1
           fi
 
-          # A change to the shared dbt-base (base/**) must re-bake EVERY service
-          # image, not just the changed one: the base is the layer the service
-          # images build FROM, so a base change (e.g. validation_runner.py) leaves
-          # any service not rebuilt on a stale-base image. The release job fans the
-          # rebuild out to all services when base_changed=true.
-          if git diff --name-only "$BEFORE" HEAD -- 'dbt-base/' | grep -q .; then
-            BASE_CHANGED=true
-          else
-            BASE_CHANGED=false
-          fi
-          echo "base_changed=${BASE_CHANGED}" >> "$GITHUB_OUTPUT"
-
           CHANGED="$(git diff --name-only "$BEFORE" HEAD -- 'services/' | cut -d/ -f1-2 | sort -u)"
           COUNT="$(printf '%s\n' "$CHANGED" | grep -c . || true)"
 
@@ -83,25 +69,17 @@ jobs:
             exit 1
           fi
 
-          # No service changed. If base changed we still run the release job to
-          # fan-out the rebuild (but POST no release); otherwise there is nothing
-          # to do and the whole release job is skipped.
+          # No service changed → nothing to release; skip the release job.
           if [ "$COUNT" -eq 0 ]; then
+            echo "No service change in this push — nothing to do; skipping."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
             echo "skip_release=true" >> "$GITHUB_OUTPUT"
-            if [ "$BASE_CHANGED" = "true" ]; then
-              echo "Base changed with no service change — re-baking all service images; no release POST."
-              echo "skip=false" >> "$GITHUB_OUTPUT"
-            else
-              echo "No service or base change in this push — nothing to do; skipping."
-              echo "skip=true" >> "$GITHUB_OUTPUT"
-            fi
             exit 0
           fi
 
-          # Exactly one service changed → normal single-service release (and the
-          # base fan-out too, if base_changed).
+          # Exactly one service changed → normal single-service release.
           SERVICE="$(printf '%s' "$CHANGED" | cut -d/ -f2)"
-          echo "Changed service: ${SERVICE} @ ${SHA} (base_changed=${BASE_CHANGED})"
+          echo "Changed service: ${SERVICE} @ ${SHA}"
 
           echo "skip=false" >> "$GITHUB_OUTPUT"
           echo "skip_release=false" >> "$GITHUB_OUTPUT"
@@ -143,8 +121,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          # Full history so the base fan-out can derive each service's current
-          # prod tag (the short SHA of the last commit that touched its dir).
+          # Full history so the changed-service diff resolves.
           fetch-depth: 0
 
       - name: Set up Docker Buildx
@@ -155,28 +132,6 @@ jobs:
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-      # dbt-base is the shared base layer the service images build FROM. Push
-      # :latest so the per-service builds resolve it from the registry.
-      - name: Build and push dbt-base
-        uses: docker/build-push-action@v6
-        with:
-          context: dbt-base
-          push: true
-          tags: ${{ secrets.DOCKERHUB_USERNAME }}/dbt-base:latest
-          cache-from: type=gha,scope=dbt-base
-          cache-to: type=gha,mode=max,scope=dbt-base
-
-      # A dbt-base change must reach EVERY service, not just the changed one:
-      # re-bake all service images FROM the fresh base under their existing prod
-      # tags so continuo's service_prod pointers resolve to fresh-base images.
-      # Without this, services not rebuilt keep a stale-base image and any release
-      # whose validation closure touches them rejects at `validating` — and the
-      # pipeline cannot self-heal. Combined with the validation Job's
-      # imagePullPolicy: Always, every validation/run then re-pulls the fresh base.
-      - name: Re-bake all service images on a dbt-base change
-        if: needs.detect.outputs.base_changed == 'true'
-        run: bash scripts/rebuild_services_from_base.sh
 
       # Only the changed service gets a new image at this commit's tag; the
       # other services keep their current prod image tags (the controller reuses
@@ -199,9 +154,7 @@ jobs:
         with:
           python-version: '3.12'
 
-      # dbt is not a dbt_load dependency (it ships in the dbt-base image); in CI
-      # install both into the same interpreter so `python -m dbt_load` (which
-      # shells out to `dbt compile`) finds dbt on PATH.
+      # dbt is not a dbt_load dependency; install it alongside dbt_load so python -m dbt_load (which shells out to dbt compile) finds dbt on PATH.
       - name: Install dbt + dbt_load
         if: needs.detect.outputs.skip_release != 'true'
         run: |
