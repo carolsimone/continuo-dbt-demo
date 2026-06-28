@@ -4,7 +4,7 @@ A reference **dbt producer** for [continuo](https://github.com/carolsimone/conti
 
 ## Reference implementation of the public "loading releases" interface
 
-This repo is the **reference external integration** for continuo's public release-loading contract. It is a deliberate, independent reimplementation of that contract: it shares **no code** with continuo internals — no Go packages, no shared client library. Everything here (the manifest filtering, the canonical S3 key, the `POST /releases` body, the bootstrap detection) is rebuilt from the contract alone. That duplication is the point: it proves the contract is self-describing enough for an outside team to integrate against without reading continuo's source.
+This repo is the **reference external integration** for continuo's public release-loading contract. It is a deliberate, independent reimplementation of that contract: it shares **no code** with continuo internals — no Go packages, no shared client library. Everything here (the `POST /releases` body, the bootstrap detection) is rebuilt from the contract alone. That duplication is the point: it proves the contract is self-describing enough for an outside team to integrate against without reading continuo's source.
 
 The authoritative contract is documented in continuo:
 **[docs/integration/loading-releases.md](https://github.com/carolsimone/continuo/blob/main/docs/integration/loading-releases.md)**.
@@ -28,7 +28,7 @@ continuo models a release as a **single changed service**. The request body is:
 
 - `service` and `image_tag` are **single values**, not maps. `repo` and `commit_sha` identify the source push (`github.repository` / `github.sha`). There is **no `service_metadata.json` sidecar**; the image tag travels in this body, not in S3.
 - The controller replies `202 Accepted` with `{"release_id": "...", "status": "received"}`.
-- The script then polls `GET /releases/<release_id>` until `status` is terminal: `promoted` (success) or `rejected` (failure). The other services' manifests are already in S3 from their own releases; the controller reconstructs the full set via the live `service_prod` pointers.
+- The script then polls `GET /releases/<release_id>` until `status` is terminal: `promoted` (success) or `rejected` (failure). The controller reconstructs the full manifest set via the live `service_prod` pointers; manifests are produced by continuo's internal compile leg, not uploaded by callers.
 
 ### Connection model
 

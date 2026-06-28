@@ -2,8 +2,9 @@
 #
 # release.sh — drive a continuo blue/green release from CD.
 #
-# Manifests are already uploaded to S3 and the service images already pushed by
-# the calling workflow. This script reaches release-controller's internal HTTP
+# The calling workflow only builds and pushes the service image. dbt compile and
+# manifest upload now happen inside continuo (Plan 5). This script reaches
+# release-controller's internal HTTP
 # API (:8088, ClusterIP) — continuo has no public domain yet, so the only way in
 # is SSH onto the Hetzner node and a server-side `kubectl port-forward`. Over
 # that path it:
@@ -23,9 +24,10 @@
 #
 # continuo models a release as a SINGLE changed service: POST /releases takes
 # one {service, image_tag} and the controller reconstructs the full manifest set
-# from the live service_prod pointers. The changed service's manifest is already
-# in S3 at the canonical key <service>/<release_id>/manifest.json, which the
-# controller derives itself — so it is not sent in the body.
+# from the live service_prod pointers. The controller runs dbt compile internally
+# to produce the manifest; the caller never touches S3. The canonical key
+# <service>/<release_id>/manifest.json is derived by the controller — so it is
+# not sent in the body.
 #
 # Required environment:
 #   HETZNER_HOST     — server host/IP (SSH as root; key already in ~/.ssh)
