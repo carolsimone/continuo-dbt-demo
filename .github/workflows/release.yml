@@ -1,14 +1,14 @@
 name: release
 
 # Deploy a dbt model change through continuo's blue/green pipeline:
-# build+push the per-service images, compile+upload the manifests to S3, then
-# POST a release to continuo (the first run auto-bootstraps; see scripts/release.sh).
+# build+push the per-service images, then POST a release to continuo
+# (the first run auto-bootstraps; see scripts/release.sh).
+# dbt compile + manifest upload now happen inside continuo itself.
 on:
   push:
     branches: [main]
     paths:
       - 'services/**'
-      - 'dbt-loader/**'
       - '.github/workflows/release.yml'
   workflow_dispatch:
 
@@ -99,21 +99,6 @@ jobs:
     permissions:
       contents: read
 
-    # Ephemeral Postgres for `dbt compile` (compile opens a connection but needs
-    # no data — it only resolves refs/jinja into manifest.json). User/db/password
-    # match the dbt profile defaults so no DBT_POSTGRES_* overrides are needed.
-    services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_USER: continuo_svc
-          POSTGRES_PASSWORD: runner
-          POSTGRES_DB: continuo_dbt
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
-
     env:
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
 
@@ -147,37 +132,6 @@ jobs:
             --cache-from "type=gha,scope=${svc}" \
             --cache-to "type=gha,mode=max,scope=${svc}" \
             "services/${svc}"
-
-      - name: Set up Python + dbt
-        if: needs.detect.outputs.skip_release != 'true'
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
-      # dbt is not a dbt_load dependency; install it alongside dbt_load so python -m dbt_load (which shells out to dbt compile) finds dbt on PATH.
-      - name: Install dbt + dbt_load
-        if: needs.detect.outputs.skip_release != 'true'
-        run: |
-          pip install --no-cache-dir "dbt-core==1.12.0b1" "dbt-postgres==1.10.0"
-          pip install --no-cache-dir -e ./dbt-loader
-
-      # Compile the changed service (against the ephemeral Postgres) and upload
-      # its manifest to the Hetzner object store at the canonical key
-      # <service>/<release_id>/manifest.json (continuo's CanonicalManifestKey).
-      # The image tag travels in the POST body (below), not in S3 — so no
-      # service_metadata sidecar. Other services' manifests are already in S3
-      # from their own releases; the controller reuses them via service_prod.
-      - name: Compile + upload manifest
-        if: needs.detect.outputs.skip_release != 'true'
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.HETZNER_S3_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.HETZNER_S3_SECRET_ACCESS_KEY }}
-          DBT_POSTGRES_HOST: localhost
-        run: |
-          python -m dbt_load load \
-            "services/${{ needs.detect.outputs.service }}" \
-            --target hetzner \
-            --release-id "${{ needs.detect.outputs.release_id }}"
 
       - name: Configure SSH for continuo-server
         if: needs.detect.outputs.skip_release != 'true'
