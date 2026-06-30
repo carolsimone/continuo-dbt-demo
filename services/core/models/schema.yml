@@ -1,0 +1,18 @@
+version: 2
+
+models:
+  - name: daily_transactions
+    description: "Basic union of core card transactions and finance FX transactions, valued in EUR. transaction_id is not unique across sources; use `source` to disambiguate."
+    columns:
+      - name: transaction_id
+        description: "Source-local transaction id (not unique across sources)."
+        tests:
+          - not_null
+      - name: amount_eur
+        description: "Transaction value in EUR. Card amounts are treated as already-EUR; FX amounts come pre-converted from fx_transactions_eur."
+        tests:
+          - not_null
+      - name: source
+        description: "Origin of the row: 'card' (seed_card_transactions) or 'fx' (analytics.fx_transactions_eur)."
+        tests:
+          - not_null
