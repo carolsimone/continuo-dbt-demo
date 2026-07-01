@@ -1,4 +1,4 @@
-{{ config(materialized='table'), tag=['schedule-e2e']}}
+{{ config(materialized='table', tags=['schedule-e2e']) }}
 
 -- Basic union of transaction types, valued in EUR.
 -- NOTE: analytics.fx_transactions_eur is produced by the *finance* service (a
@@ -12,7 +12,7 @@ SELECT
     ROUND(amount::numeric, 2) AS amount_eur,   -- card amounts treated as already-EUR
     created_at,
     'card' AS source
-FROM {{ ref('seed_card_transactions') }}
+FROM analytics.seed_card_transactions
 
 UNION ALL
 
