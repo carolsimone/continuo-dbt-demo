@@ -1,4 +1,4 @@
-{{ config(materialized='table')}}
+{{ config(materialized='table'), tag=['schedule-e2e']}}
 
 -- Basic union of transaction types, valued in EUR.
 -- NOTE: analytics.fx_transactions_eur is produced by the *finance* service (a
