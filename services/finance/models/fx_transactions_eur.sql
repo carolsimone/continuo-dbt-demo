@@ -1,4 +1,4 @@
-{{ config(materialized='table') }}
+{{ config(materialized='table'), tags=['e2e-schedule']) }}
 
 SELECT
     t.transaction_id,
