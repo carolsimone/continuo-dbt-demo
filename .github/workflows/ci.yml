@@ -1,0 +1,39 @@
+name: ci
+
+# continuo models a release as a SINGLE changed service (see release.yml), so a
+# PR touching more than one services/<svc>/ can never be released as-is. Catch
+# that at PR time instead of letting it land on main and fail release.yml.
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'services/**'
+
+jobs:
+  check-single-service:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # Need history to diff the PR's base against its head.
+          fetch-depth: 0
+
+      - name: Ensure at most one service changed
+        run: |
+          BASE="${{ github.event.pull_request.base.sha }}"
+          HEAD="${{ github.event.pull_request.head.sha }}"
+
+          CHANGED="$(git diff --name-only "$BASE" "$HEAD" -- 'services/' | cut -d/ -f1-2 | sort -u)"
+          COUNT="$(printf '%s\n' "$CHANGED" | grep -c . || true)"
+
+          if [ "$COUNT" -gt 1 ]; then
+            echo "::error::continuo accepts exactly one changed service per release; this PR touches ${COUNT}:"
+            printf '%s\n' "$CHANGED"
+            exit 1
+          fi
+
+          echo "OK: ${COUNT} service(s) changed"
