@@ -1,2 +1,2 @@
-{{ config(materialized='table',}
+{{ config(materialized='table') }}
 SELECT * FROM analytics.table_e
