@@ -1,5 +1,5 @@
 user_id,name,email,birth_year,created_at
-1,Lena Muller,lena.muller@example.com,1956,2023-05-08 07:08:47, 11
+1,Lena Muller,lena.muller@example.com,1956,2023-05-08 07:08:47
 2,Elijah Haddad,elijah.haddad@example.com,2002,2023-02-19 13:02:01
 3,Ava Kim,ava.kim@example.com,1969,2023-10-01 17:12:45
 4,Finn Okafor,finn.okafor@example.com,1989,2022-04-15 18:17:51
