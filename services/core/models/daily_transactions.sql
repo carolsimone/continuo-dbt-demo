@@ -12,7 +12,7 @@ SELECT
     ROUND(amount::numeric, 2) AS amount_eur,   -- card amounts treated as already-EUR
     created_at,
     'card' AS source
-FROM analytics.seed_card_transactions
+FROM {{ ref('seed_card_transactions') }}
 
 UNION ALL
 
