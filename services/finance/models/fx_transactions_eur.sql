@@ -10,7 +10,7 @@ SELECT
     t.created_at,
     r.rate_to_eur,
     ROUND((t.amount * r.rate_to_eur)::numeric, 2) AS amount_eur
-FROM {{ ref('seed_fx_transactions') }} t
+FROM analytics.seed_fx_transactions t
 LEFT JOIN analytics.seed_fx_rates_eur r
     ON t.currency_from = r.currency
    AND t.created_at::date = r.rate_date
