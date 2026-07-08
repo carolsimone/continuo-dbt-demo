@@ -14,3 +14,4 @@ FROM analytics.seed_fx_transactions t
 LEFT JOIN analytics.seed_fx_rates_eur r
     ON t.currency_from = r.currency
    AND t.created_at::date = r.rate_date
+WHERE true
