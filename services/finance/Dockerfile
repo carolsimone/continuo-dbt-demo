@@ -18,6 +18,12 @@ COPY macros/ ./macros/
 COPY models/ ./models/
 COPY seeds/ ./seeds/
 
+# Team "wise" dbt CLI: continuo drives finance through the dbt-commands.yaml
+# dialect (wise-dbt build-model / load-seed / compile-project), which this
+# translates to dbt-core invocations.
+COPY wise_dbt.py /usr/local/bin/wise-dbt
+RUN chmod +x /usr/local/bin/wise-dbt
+
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
