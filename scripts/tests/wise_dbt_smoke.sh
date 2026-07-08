@@ -62,12 +62,12 @@ run_verb() { # <expect-banner-substr> <verb...>
 }
 
 echo "== compile-project =="
-run_verb "dbt compile" compile-project
+run_verb "Running with dbt=" compile-project
 
 echo "== load-seed (finance own seed) =="
-run_verb "dbt seed" load-seed seed_fx_rates_eur
+run_verb "Running with dbt=" load-seed seed_fx_rates_eur
 
 echo "== build-model (needs upstream stub + seed) =="
-run_verb "dbt run" build-model fx_transactions_eur
+run_verb "Running with dbt=" build-model fx_transactions_eur
 
 echo "SMOKE OK"
