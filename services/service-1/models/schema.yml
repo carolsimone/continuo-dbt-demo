@@ -1,0 +1,26 @@
+version: 2
+
+models:
+  - name: table_a
+    description: "Passthrough of seed_table_1."
+    columns:
+      - name: id
+        tests:
+          - unique
+          - not_null
+
+  - name: table_b
+    description: "Passthrough of seed_table_2."
+    columns:
+      - name: id
+        tests:
+          - unique
+          - not_null
+
+  - name: table_c
+    description: "Passthrough of seed_table_3."
+    columns:
+      - name: id
+        tests:
+          - unique
+          - not_null
