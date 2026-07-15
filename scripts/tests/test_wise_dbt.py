@@ -58,6 +58,7 @@ class TranslateTest(unittest.TestCase):
 
     def test_extra_arg_is_none(self):
         self.assertIsNone(wise_dbt.translate(["compile-project", "extra"]))
+        self.assertIsNone(wise_dbt.translate(["run-model", "a", "b"]))
 
     def test_empty_is_none(self):
         self.assertIsNone(wise_dbt.translate([]))
