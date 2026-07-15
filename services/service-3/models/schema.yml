@@ -1,0 +1,18 @@
+version: 2
+
+models:
+  - name: table_e
+    description: "Join of table_b and table_c on id."
+    columns:
+      - name: id
+        tests:
+          - unique
+          - not_null
+
+  - name: table_f
+    description: "Join of table_a and table_c on id."
+    columns:
+      - name: id
+        tests:
+          - unique
+          - not_null
