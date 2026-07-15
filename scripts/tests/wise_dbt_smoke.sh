@@ -3,7 +3,8 @@
 # stands up an ephemeral postgres with a minimal analytics schema + a stub of the
 # cross-service upstream (analytics.seed_fx_transactions), then exercises every
 # verb the deployed dialect routes through wise-dbt: compile-project, load-seed,
-# build-model. Exits non-zero on the first failure. Gate every finance push on it.
+# run-model, build-model, test-model. Exits non-zero on the first failure. Gate
+# every finance push on it.
 set -euo pipefail
 
 IMG=finance-wisedbt-smoke
@@ -41,8 +42,12 @@ CREATE TABLE analytics.seed_fx_transactions (
   transaction_id text, user_id text, amount numeric,
   currency_from text, currency_to text, rate numeric, created_at date
 );
+-- created_at must land on a (currency, rate_date) pair that actually exists in
+-- seeds/seed_fx_rates_eur.csv, otherwise the model's LEFT JOIN yields a NULL
+-- rate_to_eur/amount_eur and fails the not_null tests exercised by build-model
+-- and test-model.
 INSERT INTO analytics.seed_fx_transactions VALUES
-  ('t1','u1',100,'USD','EUR',0.9,'2026-01-01');
+  ('t1','u1',100,'USD','EUR',0.9,'2024-01-14');
 SQL
 
 run_verb() { # <expect-banner-substr> <verb...>
@@ -67,7 +72,13 @@ run_verb "Running with dbt=" compile-project
 echo "== load-seed (finance own seed) =="
 run_verb "Running with dbt=" load-seed seed_fx_rates_eur
 
-echo "== build-model (needs upstream stub + seed) =="
+echo "== run-model (needs upstream stub + seed) =="
+run_verb "Running with dbt=" run-model fx_transactions_eur
+
+echo "== build-model = dbt build (materialize + test) =="
 run_verb "Running with dbt=" build-model fx_transactions_eur
+
+echo "== test-model (tests the built model) =="
+run_verb "Running with dbt=" test-model fx_transactions_eur
 
 echo "SMOKE OK"
