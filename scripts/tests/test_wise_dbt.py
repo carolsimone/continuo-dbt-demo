@@ -11,9 +11,9 @@ _spec.loader.exec_module(wise_dbt)
 
 
 class TranslateTest(unittest.TestCase):
-    def test_build_model(self):
+    def test_run_model(self):
         self.assertEqual(
-            wise_dbt.translate(["build-model", "fx_transactions_eur"]),
+            wise_dbt.translate(["run-model", "fx_transactions_eur"]),
             ["run", "--select", "fx_transactions_eur", "--profiles-dir", "/project"],
         )
 
@@ -21,6 +21,24 @@ class TranslateTest(unittest.TestCase):
         self.assertEqual(
             wise_dbt.translate(["load-seed", "seed_fx_rates_eur"]),
             ["seed", "--select", "seed_fx_rates_eur", "--profiles-dir", "/project"],
+        )
+
+    def test_capture_snapshot(self):
+        self.assertEqual(
+            wise_dbt.translate(["capture-snapshot", "fx_snapshot"]),
+            ["snapshot", "--select", "fx_snapshot", "--profiles-dir", "/project"],
+        )
+
+    def test_test_model(self):
+        self.assertEqual(
+            wise_dbt.translate(["test-model", "fx_transactions_eur"]),
+            ["test", "--select", "fx_transactions_eur", "--profiles-dir", "/project"],
+        )
+
+    def test_build_model(self):
+        self.assertEqual(
+            wise_dbt.translate(["build-model", "fx_transactions_eur"]),
+            ["build", "--select", "fx_transactions_eur", "--profiles-dir", "/project"],
         )
 
     def test_compile_project(self):
@@ -33,6 +51,9 @@ class TranslateTest(unittest.TestCase):
         self.assertIsNone(wise_dbt.translate(["nope"]))
 
     def test_missing_arg_is_none(self):
+        self.assertIsNone(wise_dbt.translate(["run-model"]))
+        self.assertIsNone(wise_dbt.translate(["capture-snapshot"]))
+        self.assertIsNone(wise_dbt.translate(["test-model"]))
         self.assertIsNone(wise_dbt.translate(["build-model"]))
 
     def test_extra_arg_is_none(self):
