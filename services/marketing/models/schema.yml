@@ -20,6 +20,14 @@ models:
         description: "Number of campaign-level seed rows rolled into this channel-month."
         tests:
           - not_null
+      - name: impressions
+        description: "Total ad impressions served across the channel's campaigns that month."
+        tests:
+          - not_null
+      - name: clicks
+        description: "Total ad clicks across the channel's campaigns that month."
+        tests:
+          - not_null
 
   - name: marketing_cost_per_user
     description: "Per-user marketing acquisition cost: each channel-month's spend divided evenly across the users that channel acquired that month. One row per user. Organic and referral users cost 0 (unpaid by nature, not unknown). Spend in a channel-month that acquired nobody is unallocated and absent here, so the total is less than marketing_spend_monthly's total. Per-user costs within a cohort can sum a few cents off that cohort's spend due to rounding."
@@ -35,6 +43,10 @@ models:
           - not_null
       - name: campaign
         description: "Campaign that acquired the user. Descriptive only — allocation happens at channel grain, not campaign grain."
+      - name: acquired_at
+        description: "Exact timestamp the user was acquired, before truncation to acquisition_month."
+        tests:
+          - not_null
       - name: acquisition_month
         description: "First day of the month the user was acquired; the month whose spend is divided."
         tests:

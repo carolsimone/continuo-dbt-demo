@@ -35,14 +35,18 @@ CAMPAIGNS = [
     ("affiliate", "aff_partner_b"),
 ]
 
-# EUR bounds per channel, matching the order of magnitude of the seed this
-# replaces (google_ads in the tens of thousands, email in the hundreds).
+# EUR bounds per channel. This dataset has only 50 users spread across 3
+# years, and most paid cohorts (channel x month) acquire exactly one user --
+# so a channel-month's spend is very nearly one user's CAC, not a budget
+# shared across many acquisitions. These bounds are sized to keep CAC in a
+# plausible ~50-500 EUR range for a single-user cohort; they are calibrated
+# to the user count, not copied from real ad budgets.
 CHANNEL_AMOUNT_RANGE = {
-    "google_ads": (250.0, 115000.0),
-    "meta_ads": (400.0, 55000.0),
-    "tiktok_ads": (400.0, 40000.0),
-    "email": (30.0, 2500.0),
-    "affiliate": (200.0, 47000.0),
+    "google_ads": (20.0, 250.0),
+    "meta_ads": (20.0, 200.0),
+    "tiktok_ads": (15.0, 150.0),
+    "email": (2.0, 40.0),
+    "affiliate": (15.0, 180.0),
 }
 
 IMPRESSIONS_RANGE = (20000, 800000)
@@ -74,9 +78,12 @@ def build_rows() -> list[dict]:
                 amount = round(_lerp(lo, hi, _frac(campaign, month, "amount")), 2)
 
                 # Day capped at 28 so every month is valid without calendar logic.
-                day = 1 + int(_frac(campaign, month, "day") * 28)
+                # Clamped: _frac() can return exactly 1.0, which would otherwise
+                # give day=29 (invalid in non-leap Februaries) or minute=60
+                # (invalid in every month).
+                day = 1 + min(27, int(_frac(campaign, month, "day") * 28))
                 hour = 8 + int(_frac(campaign, month, "hour") * 13)  # 08..20
-                minute = int(_frac(campaign, month, "minute") * 60)
+                minute = min(59, int(_frac(campaign, month, "minute") * 60))
 
                 impressions = int(_lerp(*IMPRESSIONS_RANGE, _frac(campaign, month, "impr")))
                 ctr = _lerp(*CTR_RANGE, _frac(campaign, month, "ctr"))
