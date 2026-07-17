@@ -73,4 +73,53 @@ assert_scalar "spend_monthly campaign_count total equals seed rows" 396 \
 assert_scalar "spend_monthly total equals seed total" t \
   "SELECT ROUND(SUM(spend_eur),2) = (SELECT ROUND(SUM(amount::numeric),2) FROM analytics.seed_marketing_spend) FROM analytics.marketing_spend_monthly"
 
+echo "== assert marketing_cost_per_user shape =="
+assert_scalar "cost_per_user has one row per user" 50 \
+  "SELECT COUNT(*) FROM analytics.marketing_cost_per_user"
+assert_scalar "cost_per_user user_id is unique" 50 \
+  "SELECT COUNT(DISTINCT user_id) FROM analytics.marketing_cost_per_user"
+assert_scalar "every acquired user is present" 0 \
+  "SELECT COUNT(*) FROM analytics.seed_user_acquisition a
+    WHERE NOT EXISTS (SELECT 1 FROM analytics.marketing_cost_per_user c
+                      WHERE c.user_id = a.user_id::int)"
+assert_scalar "unpaid users (organic + referral)" 18 \
+  "SELECT COUNT(*) FROM analytics.marketing_cost_per_user WHERE NOT channel_is_paid"
+assert_scalar "unpaid users all cost exactly 0" 18 \
+  "SELECT COUNT(*) FROM analytics.marketing_cost_per_user
+    WHERE NOT channel_is_paid AND marketing_cost_eur = 0"
+assert_scalar "organic and referral are the only unpaid channels" t \
+  "SELECT COALESCE(ARRAY_AGG(DISTINCT channel ORDER BY channel), '{}') = ARRAY['organic','referral']
+     FROM analytics.marketing_cost_per_user WHERE NOT channel_is_paid"
+assert_scalar "paid users" 32 \
+  "SELECT COUNT(*) FROM analytics.marketing_cost_per_user WHERE channel_is_paid"
+assert_scalar "paid users all cost more than 0" 32 \
+  "SELECT COUNT(*) FROM analytics.marketing_cost_per_user
+    WHERE channel_is_paid AND marketing_cost_eur > 0"
+assert_scalar "acquisition_month is always first-of-month" 0 \
+  "SELECT COUNT(*) FROM analytics.marketing_cost_per_user
+    WHERE EXTRACT(DAY FROM acquisition_month) <> 1"
+
+echo "== assert the allocation rule itself =="
+# For each paid cohort: users_in_cohort * per_user_cost must reconstruct that
+# channel-month's spend, allowing a few cents of rounding residual. This is the
+# core arithmetic of the model, not just its shape.
+assert_scalar "each cohort's allocation reconstructs its channel-month spend" 0 \
+  "WITH cohort AS (
+       SELECT c.channel, c.acquisition_month,
+              COUNT(*) AS users, MAX(c.marketing_cost_eur) AS per_user
+       FROM analytics.marketing_cost_per_user c
+       WHERE c.channel_is_paid
+       GROUP BY 1, 2
+   )
+   SELECT COUNT(*) FROM cohort
+   JOIN analytics.marketing_spend_monthly s
+     ON s.channel = cohort.channel AND s.spend_month = cohort.acquisition_month
+   WHERE ABS(cohort.users * cohort.per_user - s.spend_eur) > 0.05"
+
+# Unallocated spend is expected and by design: a channel-month with spend but
+# zero acquisitions has no user to carry it. Assert the direction only.
+assert_scalar "allocated total never exceeds total spend" t \
+  "SELECT (SELECT SUM(marketing_cost_eur) FROM analytics.marketing_cost_per_user)
+        < (SELECT SUM(spend_eur) FROM analytics.marketing_spend_monthly)"
+
 echo "SMOKE OK"
