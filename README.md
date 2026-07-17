@@ -43,7 +43,7 @@ continuo's release API has no public domain yet — it is an internal `ClusterIP
 ```
 services/        # one directory per dbt service: dbt_project.yml, profiles.yml (schema: analytics),
                  #   macros/ (generate_schema_name), models/, seeds/, Dockerfile (FROM python:3.12-slim, plain dbt + project)
-scripts/         # repo CD/utility tooling: release.sh, gen_fx_rates_eur.py
+scripts/         # repo CD/utility tooling: release.sh, gen_fx_rates_eur.py, gen_marketing_spend.py
 .github/workflows/   # release.yml (deploy)
 ```
 
