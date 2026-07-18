@@ -17,6 +17,7 @@ COPY dbt_project.yml profiles.yml ./
 COPY macros/ ./macros/
 COPY models/ ./models/
 COPY seeds/ ./seeds/
+COPY tests/ ./tests/
 
 # Team "wise" dbt CLI: continuo drives finance through the dbt-commands.yaml
 # dialect (wise-dbt run-model / load-seed / capture-snapshot / test-model /
