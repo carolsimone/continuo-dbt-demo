@@ -47,6 +47,12 @@ class TranslateTest(unittest.TestCase):
             ["compile", "--profiles-dir", "/project"],
         )
 
+    def test_parse_project(self):
+        self.assertEqual(
+            wise_dbt.translate(["parse-project"]),
+            ["parse", "--profiles-dir", "/project"],
+        )
+
     def test_unknown_verb_is_none(self):
         self.assertIsNone(wise_dbt.translate(["nope"]))
 
@@ -58,6 +64,7 @@ class TranslateTest(unittest.TestCase):
 
     def test_extra_arg_is_none(self):
         self.assertIsNone(wise_dbt.translate(["compile-project", "extra"]))
+        self.assertIsNone(wise_dbt.translate(["parse-project", "extra"]))
         self.assertIsNone(wise_dbt.translate(["run-model", "a", "b"]))
 
     def test_empty_is_none(self):

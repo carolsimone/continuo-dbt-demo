@@ -8,7 +8,7 @@ Job status stays correct.
 
 Verbs: run-model -> dbt run, load-seed -> dbt seed, capture-snapshot ->
 dbt snapshot, test-model -> dbt test, build-model -> dbt build,
-compile-project -> dbt compile.
+compile-project -> dbt compile, parse-project -> dbt parse.
 """
 import sys
 
@@ -34,6 +34,12 @@ def translate(argv):
         return [_SELECT_VERBS[verb], "--select", rest[0], "--profiles-dir", PROJECT_DIR]
     if verb == "compile-project" and not rest:
         return ["compile", "--profiles-dir", PROJECT_DIR]
+    if verb == "parse-project" and not rest:
+        # Same parse-affecting options as every other verb (only --profiles-dir):
+        # continuo's parse-export containers rehearse this exact invocation, and a
+        # divergence from the run verbs' options would invalidate the exported
+        # partial-parse cache at run time.
+        return ["parse", "--profiles-dir", PROJECT_DIR]
     return None
 
 
