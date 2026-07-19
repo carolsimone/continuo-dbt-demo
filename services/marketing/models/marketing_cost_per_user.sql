@@ -1,4 +1,4 @@
-{{ config(materialized='table') }}
+{{ config(materialized='table', tags=['daily']) }}
 
 -- Per-user acquisition cost: each channel-month's spend divided evenly across
 -- the users that channel acquired that month. One row per user_id.
