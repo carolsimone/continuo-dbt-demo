@@ -33,6 +33,31 @@ models:
         tests:
           - not_null
 
+  - name: operational_cost_per_user
+    description: "Per-user operational cost: each month's total operational cost divided evenly across the users acquired that month (from core's seed_users, read cross-service). One row per user. Costs in a month with zero signups are unallocated and absent here, so the total is less than operational_costs_monthly's total. Per-user costs within a cohort can sum a few cents off the month's total due to rounding. Counterpart of marketing's marketing_cost_per_user for a future LTV model."
+    columns:
+      - name: user_id
+        description: "Matches core.seed_users.user_id, marketing's marketing_cost_per_user.user_id, and finance's transaction user ids."
+        tests:
+          - unique
+          - not_null
+      - name: acquired_at
+        description: "Exact timestamp the user was acquired (seed_users.created_at), before truncation to acquisition_month."
+        tests:
+          - not_null
+      - name: acquisition_month
+        description: "First day of the month the user was acquired; the month whose total cost is divided."
+        tests:
+          - not_null
+      - name: users_in_cohort
+        description: "How many users were acquired in that month -- the divisor. Carried so the division can be reconstructed without re-deriving the cohort."
+        tests:
+          - not_null
+      - name: operational_cost_eur
+        description: "The user's even share of their acquisition month's total operational cost, in EUR. Always positive; never NULL."
+        tests:
+          - not_null
+
 seeds:
   - name: seed_fx_rates_eur
     description: "Per-(currency, date) rate to convert a currency amount into EUR."

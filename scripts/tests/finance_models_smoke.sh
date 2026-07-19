@@ -99,4 +99,50 @@ assert_scalar "category columns sum to the total in every month" 0 \
   "SELECT COUNT(*) FROM analytics.operational_costs_monthly
     WHERE ABS(cogs_eur + rd_eur + ga_eur - total_cost_eur) > 0.01"
 
+echo "== assert operational_cost_per_user shape =="
+assert_scalar "cost_per_user has one row per user" 50 \
+  "SELECT COUNT(*) FROM analytics.operational_cost_per_user"
+assert_scalar "cost_per_user user_id is unique" 50 \
+  "SELECT COUNT(DISTINCT user_id) FROM analytics.operational_cost_per_user"
+assert_scalar "every acquired user is present" 0 \
+  "SELECT COUNT(*) FROM analytics.seed_users u
+    WHERE NOT EXISTS (SELECT 1 FROM analytics.operational_cost_per_user c
+                      WHERE c.user_id = u.user_id::int)"
+assert_scalar "every user carries a positive cost" 50 \
+  "SELECT COUNT(*) FROM analytics.operational_cost_per_user WHERE operational_cost_eur > 0"
+assert_scalar "acquisition_month is always first-of-month" 0 \
+  "SELECT COUNT(*) FROM analytics.operational_cost_per_user
+    WHERE EXTRACT(DAY FROM acquisition_month) <> 1"
+assert_scalar "distinct acquisition months (26 of 36 have signups)" 26 \
+  "SELECT COUNT(DISTINCT acquisition_month) FROM analytics.operational_cost_per_user"
+assert_scalar "users_in_cohort matches the real per-month user count" 0 \
+  "SELECT COUNT(*) FROM (
+     SELECT c.acquisition_month
+     FROM analytics.operational_cost_per_user c
+     GROUP BY c.acquisition_month, c.users_in_cohort
+     HAVING c.users_in_cohort <> COUNT(*)
+   ) bad"
+
+echo "== assert the allocation rule itself =="
+# For each cohort: users_in_cohort * per_user_cost must reconstruct that
+# month's total cost, allowing a few cents of rounding residual. This is the
+# core arithmetic of the model, not just its shape.
+assert_scalar "each cohort's allocation reconstructs its month's total" 0 \
+  "WITH cohort AS (
+       SELECT acquisition_month,
+              COUNT(*) AS users, MAX(operational_cost_eur) AS per_user
+       FROM analytics.operational_cost_per_user
+       GROUP BY 1
+   )
+   SELECT COUNT(*) FROM cohort
+   JOIN analytics.operational_costs_monthly m
+     ON m.cost_month = cohort.acquisition_month
+   WHERE ABS(cohort.users * cohort.per_user - m.total_cost_eur) > 0.05"
+
+# Costs in a month with zero signups stay unallocated by design (10 such
+# months). Assert the direction only.
+assert_scalar "allocated total never exceeds total costs" t \
+  "SELECT (SELECT SUM(operational_cost_eur) FROM analytics.operational_cost_per_user)
+        < (SELECT SUM(total_cost_eur) FROM analytics.operational_costs_monthly)"
+
 echo "SMOKE OK"
