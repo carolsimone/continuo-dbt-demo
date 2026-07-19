@@ -1,4 +1,4 @@
-{{ config(materialized='table') }}
+{{ config(materialized='table', tags=['daily']) }}
 
 -- Campaign-level marketing spend rolled up to one row per channel per month.
 -- This is the "what did each channel cost us this month" table that
