@@ -58,8 +58,8 @@ run_verb() { # <expect-banner-substr> <verb...>
   # `dbt run`. Override it so the container actually execs wise-dbt with the
   # verb we're testing, instead of silently running entrypoint.sh's own logic.
   out="$(docker run --rm --network "$NET" \
-    -e DBT_POSTGRES_HOST="$PG" -e DBT_POSTGRES_PORT=5432 \
-    -e DBT_POSTGRES_DB=continuo_dbt -e DBT_POSTGRES_USER=continuo_svc -e DBT_POSTGRES_PASSWORD=runner \
+    -e POSTGRES_HOST="$PG" -e POSTGRES_PORT=5432 \
+    -e POSTGRES_DB=continuo_dbt -e POSTGRES_USER=continuo_svc -e POSTGRES_PASSWORD=runner \
     --entrypoint wise-dbt "$IMG" "$@" 2>&1)"
   echo "$out"
   echo "$out" | grep -q "WISE-DBT WRAPPER v1" || { echo "FAIL: banner missing for '$*'"; return 1; }
