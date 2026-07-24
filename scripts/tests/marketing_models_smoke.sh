@@ -44,8 +44,8 @@ echo "== dbt build (seeds + models + tests) =="
 # The image ENTRYPOINT is a local-debug script that ignores its args and always
 # runs a hardcoded `dbt run`. Override it so we actually get `dbt build`.
 docker run --rm --network "$NET" \
-  -e DBT_POSTGRES_HOST="$PG" -e DBT_POSTGRES_PORT=5432 \
-  -e DBT_POSTGRES_DB=continuo_dbt -e DBT_POSTGRES_USER=continuo_svc -e DBT_POSTGRES_PASSWORD=runner \
+  -e POSTGRES_HOST="$PG" -e POSTGRES_PORT=5432 \
+  -e POSTGRES_DB=continuo_dbt -e POSTGRES_USER=continuo_svc -e POSTGRES_PASSWORD=runner \
   --entrypoint dbt "$IMG" build --profiles-dir /project
 
 # assert_scalar <label> <expected> <sql>
