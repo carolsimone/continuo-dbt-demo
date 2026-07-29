@@ -67,3 +67,8 @@ Configure these in the repo's Actions secrets before the workflow can run:
 ```bash
 shellcheck scripts/release.sh
 ```
+
+## License
+
+[CC0 1.0 Universal](LICENSE) — this is example code, dedicated to the public
+domain. Copy it, adapt it, ship it; no attribution required.
