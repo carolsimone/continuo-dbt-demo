@@ -6,17 +6,14 @@ A reference **dbt producer** for [continuo](https://github.com/carolsimone/conti
 
 This repo is the **reference external integration** for continuo's public release-loading contract. It is a deliberate, independent reimplementation of that contract: it shares **no code** with continuo internals — no Go packages, no shared client library. Everything here (the `POST /releases` body, the bootstrap detection) is rebuilt from the contract alone. That duplication is the point: it proves the contract is self-describing enough for an outside team to integrate against without reading continuo's source.
 
-The authoritative contract is documented in continuo:
-**[docs/integration/loading-releases.md](https://github.com/carolsimone/continuo/blob/main/docs/integration/loading-releases.md)**.
-
-If this README and that document ever disagree, the continuo doc is authoritative — open an issue against continuo or this repo.
+The authoritative contract is continuo's `release-controller` HTTP API (`POST /releases`, `GET /releases/{id}`, `GET /current-prod`), documented in the continuo repo. If this README and that documentation ever disagree, the continuo docs are authoritative — open an issue against continuo or this repo.
 
 ## What it does
 
 On every push to `services/**` (or manual dispatch), `.github/workflows/release.yml`:
 
 1. **Builds + pushes** the one changed service's image to Docker Hub as `<DOCKERHUB_USERNAME>/<service>:<short-sha>` (+ `:latest`). The name/tag is the contract: continuo's executor launches dbt jobs as `<DOCKERHUB_USERNAME>/<service_name>:<image_tag>`. Each service image is **self-contained** (plain dbt + its own project, incl. the `generate_schema_name` macro) — there is no shared base image, so a single-service change rebuilds only that service. Validation runs in a continuo-owned image, so team images carry no validator.
-2. **Drives the release** (`scripts/release.sh`): SSHes to `continuo-server`, port-forwards the internal `release-controller` ClusterIP (`:8088`), reads `GET /current-prod`, then `POST /releases` and **polls to a terminal status — failing the deploy on `rejected`**. continuo compiles the changed service and validates the full topology before promoting.
+2. **Drives the release** (`scripts/release.sh`): calls continuo's release-controller API — reads `GET /current-prod` to detect bootstrap, `POST`s the candidate to `/releases`, then **polls `GET /releases/{id}` to a terminal status — failing the deploy on `rejected`**. continuo compiles the changed service and validates the full topology before promoting. (Transport/access details are internal to continuo and intentionally omitted here.)
 
 ### The release contract (what `scripts/release.sh` sends)
 
@@ -29,10 +26,6 @@ continuo models a release as a **single changed service**. The request body is:
 - `service` and `image_tag` are **single values**, not maps. `repo` and `commit_sha` identify the source push (`github.repository` / `github.sha`). There is **no `service_metadata.json` sidecar**; the image tag travels in this body, not in S3.
 - The controller replies `202 Accepted` with `{"release_id": "...", "status": "received"}`.
 - The script then polls `GET /releases/<release_id>` until `status` is terminal: `promoted` (success) or `rejected` (failure). The controller reconstructs the full manifest set via the live `service_prod` pointers; manifests are produced by continuo's internal compile leg, not uploaded by callers.
-
-### Connection model
-
-continuo's release API has no public domain yet — it is an internal `ClusterIP` on `:8088`. The only way in is SSH onto the Hetzner node and a server-side `kubectl port-forward`. Each API call (`/current-prod`, `POST /releases`, each poll) runs in its **own** short-lived SSH session that opens a one-shot port-forward, issues exactly one `curl`, and tears it down — a single long-held tunnel would be reaped by NAT/firewall/sshd idle timeouts during the minutes-long poll.
 
 ### First run = bootstrap
 
@@ -66,8 +59,8 @@ Configure these in the repo's Actions secrets before the workflow can run:
 |---|---|
 | `DOCKERHUB_USERNAME` | Docker Hub user; **must match** the username continuo's executor uses to pull job images. |
 | `DOCKERHUB_TOKEN` | Docker Hub push token. |
-| `HETZNER_HOST` | `continuo-server` host/IP (SSH as root). |
-| `HETZNER_SSH_KEY` | Private SSH key authorized on the server (same key continuo's own deploy uses). |
+| `HETZNER_HOST` | Deploy target for `scripts/release.sh` to reach continuo's release API. |
+| `HETZNER_SSH_KEY` | Credential authorizing `scripts/release.sh` to reach continuo's release API. |
 
 ## Local checks
 
