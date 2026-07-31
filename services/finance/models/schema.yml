@@ -87,4 +87,5 @@ seeds:
         tests:
           - not_null
           - accepted_values:
-              values: ['EUR']
+              values:
+                - EUR
