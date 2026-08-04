@@ -1,2 +1,2 @@
 {{ config(materialized='table', tags=['daily']) }}
-SELECT * FROM analytics.table_k
+SELECT *, missing_audit_column FROM analytics.table_k
