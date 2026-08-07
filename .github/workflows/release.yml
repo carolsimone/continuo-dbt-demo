@@ -4,6 +4,12 @@ name: release
 # build+push the per-service images, then POST a release to continuo
 # (the first run auto-bootstraps; see scripts/release.sh).
 # dbt compile + manifest upload now happen inside continuo itself.
+#
+# Manual dispatch releases a named service at the current main HEAD, and can
+# force a bootstrap (promote without validation, re-baselining the whole
+# estate's content hashes) — needed after continuo changes its hash formula,
+# when every stored hash mismatches and a normal release would validate the
+# entire topology.
 on:
   push:
     branches: [main]
@@ -11,6 +17,16 @@ on:
       - 'services/**'
       - '.github/workflows/release.yml'
   workflow_dispatch:
+    inputs:
+      service:
+        description: "Service to release (a services/<name> directory)"
+        required: true
+        type: string
+      force_bootstrap:
+        description: "Promote without validation and re-baseline the whole estate's content hashes"
+        required: false
+        default: false
+        type: boolean
 
 concurrency:
   group: release-main
@@ -44,6 +60,24 @@ jobs:
         id: ids
         run: |
           SHA="$(git rev-parse --short HEAD)"
+
+          # A manually dispatched run names its target service explicitly —
+          # required for a forced bootstrap, where no service directory has
+          # changed. A push release derives the service from the diff below.
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            SERVICE="${{ inputs.service }}"
+            if [ ! -d "services/${SERVICE}" ]; then
+              echo "::error::unknown service '${SERVICE}' — no services/${SERVICE}/ directory"; exit 1
+            fi
+            echo "Dispatched release: ${SERVICE} @ ${SHA} (force_bootstrap=${{ inputs.force_bootstrap }})"
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+            echo "skip_release=false" >> "$GITHUB_OUTPUT"
+            echo "tag=${SHA}" >> "$GITHUB_OUTPUT"
+            echo "release_id=rel-${SHA}-${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
+            echo "service=${SERVICE}" >> "$GITHUB_OUTPUT"
+            echo "image_tag=${SHA}" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
 
           # continuo models a release as a SINGLE changed service: POST /releases
           # takes one {service, image_tag} and the controller reconstructs the
@@ -149,4 +183,6 @@ jobs:
           IMAGE_TAG: ${{ needs.detect.outputs.image_tag }}
           REPO: ${{ github.repository }}
           COMMIT_SHA: ${{ github.sha }}
+          # Renders 'false' on push events, where inputs is empty.
+          FORCE_BOOTSTRAP: ${{ inputs.force_bootstrap == true }}
         run: bash scripts/release.sh

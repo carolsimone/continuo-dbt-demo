@@ -36,6 +36,10 @@
 #   IMAGE_TAG        — that service's image tag (this commit's short sha)
 #
 # Optional:
+#   FORCE_BOOTSTRAP  — "true" to promote without validation regardless of
+#                      current_prod state, re-baselining every node's stored
+#                      content hash (used after continuo changes its hash
+#                      formula). Default: bootstrap only when prod is unseeded.
 #   FWD_PORT         — server-local port for the forward (default 18088)
 #   POLL_ATTEMPTS    — terminal-status poll attempts (default 100). Each attempt
 #                      is sleep + a short SSH round-trip (~5s), so ~100 attempts
@@ -52,6 +56,7 @@ set -euo pipefail
 : "${IMAGE_TAG:?IMAGE_TAG must be set}"
 : "${REPO:?REPO must be set}"
 : "${COMMIT_SHA:?COMMIT_SHA must be set}"
+FORCE_BOOTSTRAP="${FORCE_BOOTSTRAP:-false}"
 FWD_PORT="${FWD_PORT:-18088}"
 POLL_ATTEMPTS="${POLL_ATTEMPTS:-100}"
 POLL_INTERVAL="${POLL_INTERVAL:-4}"
@@ -103,14 +108,19 @@ REMOTE
 
 echo "Driving release ${RELEASE_ID} (service=${SERVICE}, image_tag=${IMAGE_TAG}) against ${HETZNER_HOST}"
 
-# Bootstrap detection: GET /current-prod returns current_prod_release_id="" when
-# production has never been seeded. An empty id means this is the first release,
-# which must bootstrap (promote without validation) — a normal release would be
-# rejected because every cross-service upstream looks new against empty prod.
+# Bootstrap decision, two paths:
+#   - unseeded prod: GET /current-prod returns current_prod_release_id="" when
+#     production has never been seeded — the first release must bootstrap
+#     (promote without validation), since a normal release would be rejected
+#     because every cross-service upstream looks new against empty prod;
+#   - FORCE_BOOTSTRAP=true: deliberate re-baseline of a seeded prod, needed
+#     when continuo changes its content-hash formula and every stored hash
+#     mismatches — a normal release would treat the whole estate as changed
+#     and validate the entire topology.
 CURRENT="$(remote_api GET /current-prod || echo '{}')"
 CUR_ID="$(printf '%s' "$CURRENT" | sed -n 's/.*"current_prod_release_id"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')"
-if [ -z "$CUR_ID" ]; then BOOTSTRAP=true; else BOOTSTRAP=false; fi
-echo "current_prod release_id='${CUR_ID}' -> bootstrap=${BOOTSTRAP}"
+if [ "$FORCE_BOOTSTRAP" = "true" ] || [ -z "$CUR_ID" ]; then BOOTSTRAP=true; else BOOTSTRAP=false; fi
+echo "current_prod release_id='${CUR_ID}' force_bootstrap=${FORCE_BOOTSTRAP} -> bootstrap=${BOOTSTRAP}"
 
 BODY="$(printf '{"release_id":"%s","service":"%s","image_tag":"%s","bootstrap":%s,"repo":"%s","commit_sha":"%s"}' \
   "$RELEASE_ID" "$SERVICE" "$IMAGE_TAG" "$BOOTSTRAP" "$REPO" "$COMMIT_SHA")"
