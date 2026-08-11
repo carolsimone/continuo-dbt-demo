@@ -126,10 +126,11 @@ jobs:
     needs: detect
     if: needs.detect.outputs.skip != 'true'
     runs-on: ubuntu-latest
-    # Backstop: the deploy is a fast POST + a short poll. If anything wedges
-    # (e.g. a stuck SSH/poll), fail fast instead of idling for GitHub's 6-hour
-    # default.
-    timeout-minutes: 10
+    # Backstop against a wedged step (e.g. a stuck SSH/poll) idling for GitHub's
+    # 6-hour default. The budget covers the arm64 half of the image build, which
+    # runs under QEMU emulation and is several times slower than the native
+    # amd64 half, plus release.sh's own ~9-minute poll ceiling.
+    timeout-minutes: 30
     permissions:
       contents: read
 
@@ -143,6 +144,12 @@ jobs:
           # Full history so the changed-service diff resolves.
           fetch-depth: 0
 
+      # Registers the QEMU binfmt handlers that let this amd64 runner execute
+      # arm64 binaries, which is what the linux/arm64 half of the image build
+      # below needs to run pip inside the base image.
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -155,12 +162,19 @@ jobs:
       # Only the changed service gets a new image at this commit's tag; the
       # other services keep their current prod image tags (the controller reuses
       # them via the service_prod pointers), so there is nothing to rebuild.
+      #
+      # Both platforms are built because the cluster pulling these images decides
+      # the architecture, and a single-platform image is simply unpullable
+      # elsewhere: an arm64 node rejects an amd64-only manifest list outright
+      # ("no matching manifest for linux/arm64"). Apple Silicon laptops running a
+      # local kind cluster are the common case that hits this.
       - name: Build and push the changed service image
         if: needs.detect.outputs.skip_release != 'true'
         run: |
           svc="${{ needs.detect.outputs.service }}"
           docker buildx build \
             --push \
+            --platform linux/amd64,linux/arm64 \
             -t "${DOCKERHUB_USERNAME}/${svc}:${{ needs.detect.outputs.tag }}" \
             -t "${DOCKERHUB_USERNAME}/${svc}:latest" \
             --cache-from "type=gha,scope=${svc}" \
