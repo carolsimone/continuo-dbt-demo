@@ -1,4 +1,4 @@
-{{ config(materialized='table') }}
+{{ config(materialized='table', tags=['daily']) }}
 
 -- Per-user operational cost: each month's total operational cost divided
 -- evenly across the users acquired that month. One row per user_id.
