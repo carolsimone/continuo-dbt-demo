@@ -1,2 +1,2 @@
 {{ config(materialized='view', tags=['daily']) }}
-select * from {{ ref('operation_cost_per_user')}}
+select * from {{ ref('operational_cost_per_user')}}

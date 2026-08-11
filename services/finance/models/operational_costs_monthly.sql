@@ -1,4 +1,4 @@
-{{ config(materialized='table') }}
+{{ config(materialized='table', tags=['daily']) }}
 
 -- Company operational costs rolled up to one row per month -- the "what did
 -- running the company cost this month" table whose total
