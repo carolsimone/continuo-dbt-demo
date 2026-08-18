@@ -60,39 +60,39 @@ assert_scalar() {
 }
 
 echo "== assert marketing_spend_monthly shape =="
-assert_scalar "spend_monthly row count (5 channels x 36 months)" 180 \
+assert_scalar "spend_monthly row count (6 channels x 24 months)" 144 \
   "SELECT COUNT(*) FROM analytics.marketing_spend_monthly"
-assert_scalar "spend_monthly distinct channels" 5 \
+assert_scalar "spend_monthly distinct channels" 6 \
   "SELECT COUNT(DISTINCT channel) FROM analytics.marketing_spend_monthly"
-assert_scalar "spend_monthly distinct months" 36 \
+assert_scalar "spend_monthly distinct months" 24 \
   "SELECT COUNT(DISTINCT spend_month) FROM analytics.marketing_spend_monthly"
 assert_scalar "spend_monthly months are all first-of-month" 0 \
   "SELECT COUNT(*) FROM analytics.marketing_spend_monthly WHERE EXTRACT(DAY FROM spend_month) <> 1"
-assert_scalar "spend_monthly campaign_count total equals seed rows" 396 \
+assert_scalar "spend_monthly campaign_count total equals seed rows" 288 \
   "SELECT SUM(campaign_count) FROM analytics.marketing_spend_monthly"
 assert_scalar "spend_monthly total equals seed total" t \
   "SELECT ROUND(SUM(spend_eur),2) = (SELECT ROUND(SUM(amount::numeric),2) FROM analytics.seed_marketing_spend) FROM analytics.marketing_spend_monthly"
 
 echo "== assert marketing_cost_per_user shape =="
-assert_scalar "cost_per_user has one row per user" 50 \
+assert_scalar "cost_per_user has one row per user" 2000 \
   "SELECT COUNT(*) FROM analytics.marketing_cost_per_user"
-assert_scalar "cost_per_user user_id is unique" 50 \
+assert_scalar "cost_per_user user_id is unique" 2000 \
   "SELECT COUNT(DISTINCT user_id) FROM analytics.marketing_cost_per_user"
 assert_scalar "every acquired user is present" 0 \
   "SELECT COUNT(*) FROM analytics.seed_user_acquisition a
     WHERE NOT EXISTS (SELECT 1 FROM analytics.marketing_cost_per_user c
                       WHERE c.user_id = a.user_id::int)"
-assert_scalar "unpaid users (organic + referral)" 18 \
+assert_scalar "unpaid users (organic only)" 310 \
   "SELECT COUNT(*) FROM analytics.marketing_cost_per_user WHERE NOT channel_is_paid"
-assert_scalar "unpaid users all cost exactly 0" 18 \
+assert_scalar "unpaid users all cost exactly 0" 310 \
   "SELECT COUNT(*) FROM analytics.marketing_cost_per_user
     WHERE NOT channel_is_paid AND marketing_cost_eur = 0"
-assert_scalar "organic and referral are the only unpaid channels" t \
-  "SELECT COALESCE(ARRAY_AGG(DISTINCT channel ORDER BY channel), '{}') = ARRAY['organic','referral']
+assert_scalar "organic is the only unpaid channel" t \
+  "SELECT COALESCE(ARRAY_AGG(DISTINCT channel ORDER BY channel), '{}') = ARRAY['organic']
      FROM analytics.marketing_cost_per_user WHERE NOT channel_is_paid"
-assert_scalar "paid users" 32 \
+assert_scalar "paid users" 1690 \
   "SELECT COUNT(*) FROM analytics.marketing_cost_per_user WHERE channel_is_paid"
-assert_scalar "paid users all cost more than 0" 32 \
+assert_scalar "paid users all cost more than 0" 1690 \
   "SELECT COUNT(*) FROM analytics.marketing_cost_per_user
     WHERE channel_is_paid AND marketing_cost_eur > 0"
 assert_scalar "acquisition_month is always first-of-month" 0 \

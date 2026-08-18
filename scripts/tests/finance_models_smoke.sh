@@ -53,7 +53,7 @@ CREATE TABLE analytics.seed_users (
 );
 SQL
 
-echo "== load real core seed_users (50 users, 2021-01..2023-12) =="
+echo "== load real core seed_users (2000 users, 2023-01..2024-12) =="
 docker exec -i "$PG" psql -U continuo_svc -d continuo_dbt \
   -c "COPY analytics.seed_users FROM STDIN WITH (FORMAT csv, HEADER true)" \
   < "$ROOT/services/core/seeds/seed_users.csv"
@@ -87,11 +87,11 @@ assert_scalar() {
 }
 
 echo "== assert operational_costs_monthly shape =="
-assert_scalar "monthly row count (36 months)" 36 \
+assert_scalar "monthly row count (24 months)" 24 \
   "SELECT COUNT(*) FROM analytics.operational_costs_monthly"
 assert_scalar "monthly months are all first-of-month" 0 \
   "SELECT COUNT(*) FROM analytics.operational_costs_monthly WHERE EXTRACT(DAY FROM cost_month) <> 1"
-assert_scalar "monthly cost_line_count total equals seed rows" 360 \
+assert_scalar "monthly cost_line_count total equals seed rows" 240 \
   "SELECT SUM(cost_line_count) FROM analytics.operational_costs_monthly"
 assert_scalar "monthly total equals seed total" t \
   "SELECT ROUND(SUM(total_cost_eur),2) = (SELECT ROUND(SUM(amount::numeric),2) FROM analytics.seed_operational_costs) FROM analytics.operational_costs_monthly"
@@ -100,20 +100,20 @@ assert_scalar "category columns sum to the total in every month" 0 \
     WHERE ABS(cogs_eur + rd_eur + ga_eur - total_cost_eur) > 0.01"
 
 echo "== assert operational_cost_per_user shape =="
-assert_scalar "cost_per_user has one row per user" 50 \
+assert_scalar "cost_per_user has one row per user" 2000 \
   "SELECT COUNT(*) FROM analytics.operational_cost_per_user"
-assert_scalar "cost_per_user user_id is unique" 50 \
+assert_scalar "cost_per_user user_id is unique" 2000 \
   "SELECT COUNT(DISTINCT user_id) FROM analytics.operational_cost_per_user"
 assert_scalar "every acquired user is present" 0 \
   "SELECT COUNT(*) FROM analytics.seed_users u
     WHERE NOT EXISTS (SELECT 1 FROM analytics.operational_cost_per_user c
                       WHERE c.user_id = u.user_id::int)"
-assert_scalar "every user carries a positive cost" 50 \
+assert_scalar "every user carries a positive cost" 2000 \
   "SELECT COUNT(*) FROM analytics.operational_cost_per_user WHERE operational_cost_eur > 0"
 assert_scalar "acquisition_month is always first-of-month" 0 \
   "SELECT COUNT(*) FROM analytics.operational_cost_per_user
     WHERE EXTRACT(DAY FROM acquisition_month) <> 1"
-assert_scalar "distinct acquisition months (26 of 36 have signups)" 26 \
+assert_scalar "distinct acquisition months (all 24 have signups)" 24 \
   "SELECT COUNT(DISTINCT acquisition_month) FROM analytics.operational_cost_per_user"
 assert_scalar "users_in_cohort matches the real per-month user count" 0 \
   "SELECT COUNT(*) FROM (
@@ -139,8 +139,10 @@ assert_scalar "each cohort's allocation reconstructs its month's total" 0 \
      ON m.cost_month = cohort.acquisition_month
    WHERE ABS(cohort.users * cohort.per_user - m.total_cost_eur) > 0.05"
 
-# Costs in a month with zero signups stay unallocated by design (10 such
-# months). Assert the direction only.
+# Every cost month now has a matching acquisition cohort (both run
+# 2023-01..2024-12), so nothing is dropped as a whole month; the residual
+# below is per-user cent rounding across large cohorts. Assert the
+# direction only.
 assert_scalar "allocated total never exceeds total costs" t \
   "SELECT (SELECT SUM(operational_cost_eur) FROM analytics.operational_cost_per_user)
         < (SELECT SUM(total_cost_eur) FROM analytics.operational_costs_monthly)"
