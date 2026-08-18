@@ -12,6 +12,10 @@ models:
         description: "Transaction value in EUR. Card amounts are treated as already-EUR; FX amounts come pre-converted from fx_transactions_eur."
         tests:
           - not_null
+      - name: fee_amount_eur
+        description: "Revenue: the fee the company earned on this transaction, in EUR. Card fees are already EUR; FX fees come pre-converted from fx_transactions_eur."
+        tests:
+          - not_null
       - name: source
         description: "Origin of the row: 'card' (seed_card_transactions) or 'fx' (analytics.fx_transactions_eur)."
         tests:
