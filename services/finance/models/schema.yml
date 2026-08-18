@@ -15,6 +15,14 @@ models:
       - name: amount_eur
         tests:
           - not_null
+      - name: fee_amount
+        description: "Fee the company earned, denominated in currency_from."
+        tests:
+          - not_null
+      - name: fee_amount_eur
+        description: "fee_amount converted to EUR on the same rate_to_eur join as amount_eur."
+        tests:
+          - not_null
 
   - name: operational_costs_monthly
     description: "Operational costs rolled up to one row per month, with COGS/R&D/G&A breakdown columns. Source of the monthly totals that operational_cost_per_user divides across users acquired that month. All amounts are EUR."
