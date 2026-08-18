@@ -7,10 +7,13 @@
 -- spent 100 EUR that month and acquired 10 users, carries 10 EUR.
 --
 -- Two deliberate behaviours:
---   * Every acquired user gets a row. organic and referral have no spend by
---     nature, so they cost 0 rather than NULL -- we know the value, it is zero.
---     They will gain *operational* costs as a separate component when the LTV
---     model lands; that must not overwrite marketing_cost_eur.
+--   * Every acquired user gets a row. organic is the only channel with no
+--     spend by nature, so it costs 0 rather than NULL -- we know the value,
+--     it is zero. referral is paid: it carries the per-signup bounty as its
+--     exact cost (enforced by assert_referral_cac_equals_bounty), not zero.
+--     Operational costs are a separate component (finance's
+--     operational_cost_per_user) combined alongside this one in
+--     ltv_per_user; that combination must not overwrite marketing_cost_eur.
 --   * Spend in a channel-month that acquired nobody stays UNALLOCATED -- it has
 --     no user to attach to and simply produces no row here. So
 --     SUM(marketing_cost_eur) < SUM(marketing_spend_monthly.spend_eur), by

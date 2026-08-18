@@ -91,7 +91,11 @@ SELECT
   user_id::int,
   'google_ads',
   DATE_TRUNC('month', created_at::timestamp)::date,
-  true, 30.60           -- flat stand-in for the blended CAC
+  true,
+  CASE WHEN user_id::int % 6 = 0 THEN 0 ELSE 30.60 END
+    -- ~1-in-6 users get EUR 0 CAC, standing in for organic's real ~15-16%
+    -- share, so this smoke actually exercises ltv_per_user's NULLIF(m.
+    -- marketing_cost_eur, 0) guard instead of only ever dividing by 30.60.
 FROM analytics.seed_users;
 SQL
 
@@ -190,12 +194,15 @@ assert_scalar "each cohort's allocation reconstructs its month's total" 0 \
    WHERE ABS(cohort.users * cohort.per_user - m.total_cost_eur) > 0.6"
 
 # Every cost month now has a matching acquisition cohort (both run
-# 2023-01..2024-12), so nothing is dropped as a whole month; the residual
-# below is per-user cent rounding across large cohorts. Assert the
-# direction only.
-assert_scalar "allocated total never exceeds total costs" t \
-  "SELECT (SELECT SUM(operational_cost_eur) FROM analytics.operational_cost_per_user)
-        < (SELECT SUM(total_cost_eur) FROM analytics.operational_costs_monthly)"
+# 2023-01..2024-12), so nothing is dropped as a whole month and the old
+# structural margin (10/36 unallocated months, ~EUR 300k guaranteed slack)
+# is gone. What is left is per-user cent rounding across 24 cohorts (up to
+# 114 users/month, EUR 0.005 max rounding error/user) -- a possible swing of
+# roughly EUR 13.7 either way, so the residual's SIGN is not meaningful on a
+# reseed. Assert magnitude instead of direction.
+assert_scalar "allocated total is within rounding tolerance of total costs" t \
+  "SELECT ABS((SELECT SUM(total_cost_eur) FROM analytics.operational_costs_monthly) -
+              (SELECT SUM(operational_cost_eur) FROM analytics.operational_cost_per_user)) < 20.00"
 
 echo "== assert ltv_per_user shape =="
 assert_scalar "one row per user" 2000 \

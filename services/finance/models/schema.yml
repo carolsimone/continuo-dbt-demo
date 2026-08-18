@@ -33,7 +33,7 @@ models:
           - unique
           - not_null
       - name: total_cost_eur
-        description: "Total operational cost for the month, in EUR, rounded to cents. Equals cogs_eur + rd_eur + ga_eur."
+        description: "Total operational cost for the month, in EUR, rounded to cents. Equals cogs_eur + rd_eur + ga_eur, and also equals variable_cost_eur + fixed_cost_eur."
         tests:
           - not_null
       - name: variable_cost_eur
@@ -50,7 +50,7 @@ models:
           - not_null
 
   - name: operational_cost_per_user
-    description: "Per-user operational cost: each month's total operational cost divided evenly across the users acquired that month (from core's seed_users, read cross-service). One row per user. Costs in a month with zero signups are unallocated and absent here, so the total is less than operational_costs_monthly's total. Per-user costs within a cohort can sum a few cents off the month's total due to rounding. Counterpart of marketing's marketing_cost_per_user for a future LTV model."
+    description: "Per-user operational cost: each month's total operational cost divided evenly across the users acquired that month (from core's seed_users, read cross-service). One row per user. A cost month with zero signups would be unallocated and absent here; today every one of the 24 cost months has a matching cohort, so any gap between this table's total and operational_costs_monthly's total is per-user cent rounding, not unallocated months. Per-user costs within a cohort can sum a few cents off the month's total due to rounding. Counterpart of marketing's marketing_cost_per_user; both feed ltv_per_user."
     columns:
       - name: user_id
         description: "Matches core.seed_users.user_id, marketing's marketing_cost_per_user.user_id, and finance's transaction user ids."

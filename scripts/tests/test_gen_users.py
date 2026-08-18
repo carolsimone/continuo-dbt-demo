@@ -48,7 +48,7 @@ class BuildRowsTest(unittest.TestCase):
             actual = counts[channel] / gen.N_USERS
             self.assertAlmostEqual(actual, share, delta=0.02, msg=channel)
 
-    def test_only_organic_is_an_unpaid_channel(self):
+    def test_referral_and_organic_channels_are_present(self):
         # referral is paid (a bounty to the referrer) -- design decision 8a.
         channels = {a["channel"] for a in self.acquisitions}
         self.assertIn("referral", channels)

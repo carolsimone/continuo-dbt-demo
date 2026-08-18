@@ -5,7 +5,7 @@ models:
     description: "Marketing spend rolled up to one row per channel per month. Source of the channel-month totals that marketing_cost_per_user divides across acquired users. All amounts are EUR."
     columns:
       - name: channel
-        description: "Paid acquisition channel. Only the five channels we spend on appear here; organic and referral never do."
+        description: "Paid acquisition channel. Six channels we spend on appear here (five ad channels plus referral, which is paid via the per-signup bounty); organic never does."
         tests:
           - not_null
       - name: spend_month
