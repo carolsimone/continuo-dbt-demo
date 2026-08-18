@@ -6,6 +6,11 @@ profile: default
 model-paths: ["models"]
 seed-paths: ["seeds"]
 
+vars:
+  # Paid to the referrer per referred signup. Must equal REFERRAL_BOUNTY_EUR
+  # in scripts/gen_marketing_spend.py.
+  referral_bounty_eur: 25.0
+
 seeds:
   marketing:
     +full_refresh: false
