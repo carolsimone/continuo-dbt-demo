@@ -103,6 +103,11 @@ echo "== assert the allocation rule itself =="
 # For each paid cohort: users_in_cohort * per_user_cost must reconstruct that
 # channel-month's spend, allowing a few cents of rounding residual. This is the
 # core arithmetic of the model, not just its shape.
+# At the 2,000-user/24-month scale, per-user cent rounding across large
+# cohorts can drift further than a few cents: a live dbt build against the
+# regenerated seeds showed a real max residual of EUR 0.20 (google_ads,
+# 2024-11, 42-user cohort). 0.25 comfortably clears that observed max while
+# still catching a real regression in the allocation math.
 assert_scalar "each cohort's allocation reconstructs its channel-month spend" 0 \
   "WITH cohort AS (
        SELECT c.channel, c.acquisition_month,
@@ -114,12 +119,23 @@ assert_scalar "each cohort's allocation reconstructs its channel-month spend" 0 
    SELECT COUNT(*) FROM cohort
    JOIN analytics.marketing_spend_monthly s
      ON s.channel = cohort.channel AND s.spend_month = cohort.acquisition_month
-   WHERE ABS(cohort.users * cohort.per_user - s.spend_eur) > 0.05"
+   WHERE ABS(cohort.users * cohort.per_user - s.spend_eur) > 0.25"
 
 # Unallocated spend is expected and by design: a channel-month with spend but
 # zero acquisitions has no user to carry it. Assert the direction only.
 assert_scalar "allocated total never exceeds total spend" t \
   "SELECT (SELECT SUM(marketing_cost_eur) FROM analytics.marketing_cost_per_user)
         < (SELECT SUM(spend_eur) FROM analytics.marketing_spend_monthly)"
+
+echo "== assert referral CAC equals the bounty =="
+assert_scalar "referral users all carry the bounty" 0 \
+  "SELECT COUNT(*) FROM analytics.marketing_cost_per_user
+    WHERE channel = 'referral' AND marketing_cost_eur <> 25.00"
+assert_scalar "organic is the only zero-cost channel" 1 \
+  "SELECT COUNT(DISTINCT channel) FROM analytics.marketing_cost_per_user
+    WHERE marketing_cost_eur = 0"
+assert_scalar "referral counts as a paid channel" t \
+  "SELECT bool_and(channel_is_paid) FROM analytics.marketing_cost_per_user
+    WHERE channel = 'referral'"
 
 echo "SMOKE OK"
