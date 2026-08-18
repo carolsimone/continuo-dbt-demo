@@ -60,39 +60,39 @@ assert_scalar() {
 }
 
 echo "== assert marketing_spend_monthly shape =="
-assert_scalar "spend_monthly row count (5 channels x 36 months)" 180 \
+assert_scalar "spend_monthly row count (6 channels x 24 months)" 144 \
   "SELECT COUNT(*) FROM analytics.marketing_spend_monthly"
-assert_scalar "spend_monthly distinct channels" 5 \
+assert_scalar "spend_monthly distinct channels" 6 \
   "SELECT COUNT(DISTINCT channel) FROM analytics.marketing_spend_monthly"
-assert_scalar "spend_monthly distinct months" 36 \
+assert_scalar "spend_monthly distinct months" 24 \
   "SELECT COUNT(DISTINCT spend_month) FROM analytics.marketing_spend_monthly"
 assert_scalar "spend_monthly months are all first-of-month" 0 \
   "SELECT COUNT(*) FROM analytics.marketing_spend_monthly WHERE EXTRACT(DAY FROM spend_month) <> 1"
-assert_scalar "spend_monthly campaign_count total equals seed rows" 396 \
+assert_scalar "spend_monthly campaign_count total equals seed rows" 288 \
   "SELECT SUM(campaign_count) FROM analytics.marketing_spend_monthly"
 assert_scalar "spend_monthly total equals seed total" t \
   "SELECT ROUND(SUM(spend_eur),2) = (SELECT ROUND(SUM(amount::numeric),2) FROM analytics.seed_marketing_spend) FROM analytics.marketing_spend_monthly"
 
 echo "== assert marketing_cost_per_user shape =="
-assert_scalar "cost_per_user has one row per user" 50 \
+assert_scalar "cost_per_user has one row per user" 2000 \
   "SELECT COUNT(*) FROM analytics.marketing_cost_per_user"
-assert_scalar "cost_per_user user_id is unique" 50 \
+assert_scalar "cost_per_user user_id is unique" 2000 \
   "SELECT COUNT(DISTINCT user_id) FROM analytics.marketing_cost_per_user"
 assert_scalar "every acquired user is present" 0 \
   "SELECT COUNT(*) FROM analytics.seed_user_acquisition a
     WHERE NOT EXISTS (SELECT 1 FROM analytics.marketing_cost_per_user c
                       WHERE c.user_id = a.user_id::int)"
-assert_scalar "unpaid users (organic + referral)" 18 \
+assert_scalar "unpaid users (organic only)" 310 \
   "SELECT COUNT(*) FROM analytics.marketing_cost_per_user WHERE NOT channel_is_paid"
-assert_scalar "unpaid users all cost exactly 0" 18 \
+assert_scalar "unpaid users all cost exactly 0" 310 \
   "SELECT COUNT(*) FROM analytics.marketing_cost_per_user
     WHERE NOT channel_is_paid AND marketing_cost_eur = 0"
-assert_scalar "organic and referral are the only unpaid channels" t \
-  "SELECT COALESCE(ARRAY_AGG(DISTINCT channel ORDER BY channel), '{}') = ARRAY['organic','referral']
+assert_scalar "organic is the only unpaid channel" t \
+  "SELECT COALESCE(ARRAY_AGG(DISTINCT channel ORDER BY channel), '{}') = ARRAY['organic']
      FROM analytics.marketing_cost_per_user WHERE NOT channel_is_paid"
-assert_scalar "paid users" 32 \
+assert_scalar "paid users" 1690 \
   "SELECT COUNT(*) FROM analytics.marketing_cost_per_user WHERE channel_is_paid"
-assert_scalar "paid users all cost more than 0" 32 \
+assert_scalar "paid users all cost more than 0" 1690 \
   "SELECT COUNT(*) FROM analytics.marketing_cost_per_user
     WHERE channel_is_paid AND marketing_cost_eur > 0"
 assert_scalar "acquisition_month is always first-of-month" 0 \
@@ -103,6 +103,11 @@ echo "== assert the allocation rule itself =="
 # For each paid cohort: users_in_cohort * per_user_cost must reconstruct that
 # channel-month's spend, allowing a few cents of rounding residual. This is the
 # core arithmetic of the model, not just its shape.
+# At the 2,000-user/24-month scale, per-user cent rounding across large
+# cohorts can drift further than a few cents: a live dbt build against the
+# regenerated seeds showed a real max residual of EUR 0.20 (google_ads,
+# 2024-11, 42-user cohort). 0.25 comfortably clears that observed max while
+# still catching a real regression in the allocation math.
 assert_scalar "each cohort's allocation reconstructs its channel-month spend" 0 \
   "WITH cohort AS (
        SELECT c.channel, c.acquisition_month,
@@ -114,12 +119,23 @@ assert_scalar "each cohort's allocation reconstructs its channel-month spend" 0 
    SELECT COUNT(*) FROM cohort
    JOIN analytics.marketing_spend_monthly s
      ON s.channel = cohort.channel AND s.spend_month = cohort.acquisition_month
-   WHERE ABS(cohort.users * cohort.per_user - s.spend_eur) > 0.05"
+   WHERE ABS(cohort.users * cohort.per_user - s.spend_eur) > 0.25"
 
 # Unallocated spend is expected and by design: a channel-month with spend but
 # zero acquisitions has no user to carry it. Assert the direction only.
 assert_scalar "allocated total never exceeds total spend" t \
   "SELECT (SELECT SUM(marketing_cost_eur) FROM analytics.marketing_cost_per_user)
         < (SELECT SUM(spend_eur) FROM analytics.marketing_spend_monthly)"
+
+echo "== assert referral CAC equals the bounty =="
+assert_scalar "referral users all carry the bounty" 0 \
+  "SELECT COUNT(*) FROM analytics.marketing_cost_per_user
+    WHERE channel = 'referral' AND marketing_cost_eur <> 25.00"
+assert_scalar "organic is the only zero-cost channel" 1 \
+  "SELECT COUNT(DISTINCT channel) FROM analytics.marketing_cost_per_user
+    WHERE marketing_cost_eur = 0"
+assert_scalar "referral counts as a paid channel" t \
+  "SELECT bool_and(channel_is_paid) FROM analytics.marketing_cost_per_user
+    WHERE channel = 'referral'"
 
 echo "SMOKE OK"

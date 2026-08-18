@@ -46,7 +46,10 @@ services/        # one directory per service.
                  #     macros/ (generate_schema_name), models/, seeds/, Dockerfile (plain dbt + project)
                  #   python-node service: contracts/*.yml, scripts/*.py, Dockerfile
                  #     (FROM ghcr.io/carolsimone/continuo-python-runtime:<tag>)
-scripts/         # repo CD/utility tooling: release.sh, gen_fx_rates_eur.py, gen_marketing_spend.py, gen_operational_costs.py
+scripts/         # repo CD/utility tooling: release.sh, gen_users.py, gen_transactions.py,
+                 #   gen_fx_rates_eur.py, gen_marketing_spend.py, gen_operational_costs.py
+                 #   Seed generators are ordered: gen_users -> {gen_marketing_spend,
+                 #   gen_transactions -> gen_fx_rates_eur}; gen_operational_costs is independent.
 .github/workflows/   # release.yml (deploy), ci.yml (PR checks)
 ```
 

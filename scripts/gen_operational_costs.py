@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Generate services/finance/seeds/seed_operational_costs.csv.
 
-One row per (cost line, month) for 2021-01 .. 2023-12 — the window covered by
+One row per (cost line, month) for 2023-01 .. 2024-12 — the window covered by
 core's seed_users. Costs and user acquisition must overlap, otherwise
 operational_cost_per_user has costs with no users to allocate them to.
 
@@ -17,25 +17,33 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 DST = ROOT / "services" / "finance" / "seeds" / "seed_operational_costs.csv"
 
-YEARS = (2021, 2022, 2023)
+YEARS = (2023, 2024)  # MUST match gen_users.py and gen_marketing_spend.py
 
-# (category, subcategory, cost_type, base_eur, monthly_growth) — the 10 cost
-# lines already present in the seed, amounts in the same order of magnitude.
-# base_eur is the 2021-01 trend value; the trend grows linearly with the month
-# index (base * (1 + growth * i)). Variable COGS lines drift upward as the
-# company grows; fixed lines only jitter around their base — the same shape as
-# the data this replaces.
+# (category, subcategory, cost_type, base_eur, monthly_growth) -- 10 cost lines,
+# sized for a ~6-person fintech serving 2,000 users, not a large company.
+#
+# The split matters: ltv_per_user headlines contribution margin, which
+# subtracts ONLY the variable lines. Fixed lines are excluded from the LTV
+# numerator and show up in fully_allocated_eur instead.
+#
+# Variable lines drift upward with the month index as the user base grows;
+# fixed lines only jitter around their base.
+#
+# Over 24 months these total ~EUR 40k variable (~EUR 20/user) and ~EUR 706k
+# fixed (~EUR 353/user), which puts contribution margin at ~EUR 81 against
+# ~EUR 101 of revenue and leaves fully-allocated at ~ -EUR 302. A company
+# burning at Series A, which is the honest shape.
 COST_LINES = [
-    ("COGS", "cloud_hosting",        "variable", 6000.0,  0.015),
-    ("COGS", "transaction_fees",     "variable", 3500.0,  0.015),
-    ("COGS", "customer_support",     "fixed",    6000.0,  0.0),
-    ("R&D",  "engineering_salaries", "fixed",    45000.0, 0.0),
-    ("R&D",  "product_design",       "fixed",    12300.0, 0.0),
-    ("R&D",  "tooling_saas",         "fixed",    3050.0,  0.0),
-    ("G&A",  "office_rent",          "fixed",    7150.0,  0.0),
-    ("G&A",  "finance_legal",        "fixed",    5000.0,  0.0),
-    ("G&A",  "hr_admin",             "fixed",    4050.0,  0.0),
-    ("G&A",  "insurance",            "fixed",    1530.0,  0.0),
+    ("COGS", "cloud_hosting",        "variable", 850.0,   0.015),
+    ("COGS", "transaction_fees",     "variable", 570.0,   0.015),
+    ("COGS", "customer_support",     "fixed",    2500.0,  0.0),
+    ("R&D",  "engineering_salaries", "fixed",    16000.0, 0.0),
+    ("R&D",  "product_design",       "fixed",    3000.0,  0.0),
+    ("R&D",  "tooling_saas",         "fixed",    1200.0,  0.0),
+    ("G&A",  "office_rent",          "fixed",    2800.0,  0.0),
+    ("G&A",  "finance_legal",        "fixed",    1800.0,  0.0),
+    ("G&A",  "hr_admin",             "fixed",    1500.0,  0.0),
+    ("G&A",  "insurance",            "fixed",    600.0,   0.0),
 ]
 
 JITTER = 0.08  # deterministic +/-8% wobble around the trend line
