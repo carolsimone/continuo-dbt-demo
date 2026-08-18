@@ -163,11 +163,16 @@ jobs:
         if: needs.detect.outputs.kind == 'python' && needs.detect.outputs.skip_release != 'true'
         uses: astral-sh/setup-uv@v5
 
+      # Pinned deliberately, not left to float: this is a release-gating
+      # install (it computes the hashes continuo's manifest side recomputes
+      # and rejects on mismatch), so a silent republish or an unpinned
+      # git fallback resolving main must never change what it accepts. Move
+      # this pin only alongside a deliberate runtime upgrade.
       - name: Install continuo-python-runtime
         if: needs.detect.outputs.kind == 'python' && needs.detect.outputs.skip_release != 'true'
         run: |
-          uv tool install continuo-python-runtime || \
-            uv tool install "git+https://github.com/carolsimone/continuo-python-runtime"
+          uv tool install continuo-python-runtime==0.2.0 || \
+            uv tool install "git+https://github.com/carolsimone/continuo-python-runtime@v0.2.1"
 
       # Fast feedback only: this only looks at the service's scripts/. `continuo-runtime
       # merge` (below) independently lints the script plus its whole in-repo import
@@ -192,6 +197,7 @@ jobs:
           continuo-runtime merge "services/${{ needs.detect.outputs.service }}/contracts" \
             --service "${{ needs.detect.outputs.service }}" \
             --repo-root "services/${{ needs.detect.outputs.service }}" \
+            --dialect postgres \
             --out "${RUNNER_TEMP}/contract.yaml"
 
       # Registers the QEMU binfmt handlers that let this amd64 runner execute

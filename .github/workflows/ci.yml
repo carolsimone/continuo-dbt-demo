@@ -71,10 +71,14 @@ jobs:
       - name: Set up uv
         uses: astral-sh/setup-uv@v5
 
+      # Pinned deliberately, not left to float — same pin as release.yml's
+      # install step, for the same reason: this gate must judge a PR the same
+      # way the eventual release would. Move this pin only alongside a
+      # deliberate runtime upgrade.
       - name: Install continuo-python-runtime
         run: |
-          uv tool install continuo-python-runtime || \
-            uv tool install "git+https://github.com/carolsimone/continuo-python-runtime"
+          uv tool install continuo-python-runtime==0.2.0 || \
+            uv tool install "git+https://github.com/carolsimone/continuo-python-runtime@v0.2.1"
 
       - name: Lint python scripts (no hand-written SQL)
         run: continuo-runtime lint "services/${{ needs.check-single-service.outputs.service }}/scripts"

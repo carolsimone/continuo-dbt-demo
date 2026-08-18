@@ -79,12 +79,14 @@ Configure these in the repo's Actions secrets before the workflow can run:
 ```bash
 shellcheck scripts/release.sh
 
-# Python services: lint/validate/merge with continuo-runtime (from PyPI, or
-# `uv tool install git+https://github.com/carolsimone/continuo-python-runtime`
-# if it is not yet published).
+# Python services: lint/validate/merge with continuo-runtime. Pinned exactly
+# (same pin as the release.yml/ci.yml install steps) — move this version only
+# alongside a deliberate runtime upgrade:
+uv tool install continuo-python-runtime==0.2.0 || \
+  uv tool install "git+https://github.com/carolsimone/continuo-python-runtime@v0.2.1"
 continuo-runtime lint services/service-py/scripts/
 continuo-runtime validate services/service-py/contracts/ --dialect postgres
-continuo-runtime merge services/service-py/contracts/ --service service-py --repo-root services/service-py --out /tmp/contract.yaml
+continuo-runtime merge services/service-py/contracts/ --service service-py --repo-root services/service-py --dialect postgres --out /tmp/contract.yaml
 ```
 
 ## License
