@@ -33,9 +33,16 @@
 #   HETZNER_HOST     — server host/IP (SSH as root; key already in ~/.ssh)
 #   RELEASE_ID       — unique per run, e.g. rel-<shortsha>-<runid>
 #   SERVICE          — the single changed service, e.g. service-3
-#   IMAGE_TAG        — that service's image tag (this commit's short sha)
+#   IMAGE_TAG        — that service's image tag: a dbt release passes the bare
+#                      short sha (continuo composes the pull ref itself); a
+#                      python release (KIND=python) passes the full pullable
+#                      registry ref, since continuo runs that verbatim.
 #
 # Optional:
+#   KIND             — "python" to mark this release as a python-node service
+#                      (adds "kind":"python" to the POST body). Any other
+#                      value, or leaving it unset, keeps the existing dbt
+#                      behavior: no "kind" field at all.
 #   FORCE_BOOTSTRAP  — "true" to promote without validation regardless of
 #                      current_prod state, re-baselining every node's stored
 #                      content hash (used after continuo changes its hash
@@ -56,6 +63,7 @@ set -euo pipefail
 : "${IMAGE_TAG:?IMAGE_TAG must be set}"
 : "${REPO:?REPO must be set}"
 : "${COMMIT_SHA:?COMMIT_SHA must be set}"
+KIND="${KIND:-}"
 FORCE_BOOTSTRAP="${FORCE_BOOTSTRAP:-false}"
 FWD_PORT="${FWD_PORT:-18088}"
 POLL_ATTEMPTS="${POLL_ATTEMPTS:-100}"
@@ -106,7 +114,7 @@ fi
 REMOTE
 }
 
-echo "Driving release ${RELEASE_ID} (service=${SERVICE}, image_tag=${IMAGE_TAG}) against ${HETZNER_HOST}"
+echo "Driving release ${RELEASE_ID} (service=${SERVICE}, kind=${KIND:-dbt}, image_tag=${IMAGE_TAG}) against ${HETZNER_HOST}"
 
 # Bootstrap decision, two paths:
 #   - unseeded prod: GET /current-prod returns current_prod_release_id="" when
@@ -122,8 +130,13 @@ CUR_ID="$(printf '%s' "$CURRENT" | sed -n 's/.*"current_prod_release_id"[[:space
 if [ "$FORCE_BOOTSTRAP" = "true" ] || [ -z "$CUR_ID" ]; then BOOTSTRAP=true; else BOOTSTRAP=false; fi
 echo "current_prod release_id='${CUR_ID}' force_bootstrap=${FORCE_BOOTSTRAP} -> bootstrap=${BOOTSTRAP}"
 
-BODY="$(printf '{"release_id":"%s","service":"%s","image_tag":"%s","bootstrap":%s,"repo":"%s","commit_sha":"%s"}' \
-  "$RELEASE_ID" "$SERVICE" "$IMAGE_TAG" "$BOOTSTRAP" "$REPO" "$COMMIT_SHA")"
+if [ "$KIND" = "python" ]; then
+  BODY="$(printf '{"release_id":"%s","service":"%s","image_tag":"%s","bootstrap":%s,"repo":"%s","commit_sha":"%s","kind":"python"}' \
+    "$RELEASE_ID" "$SERVICE" "$IMAGE_TAG" "$BOOTSTRAP" "$REPO" "$COMMIT_SHA")"
+else
+  BODY="$(printf '{"release_id":"%s","service":"%s","image_tag":"%s","bootstrap":%s,"repo":"%s","commit_sha":"%s"}' \
+    "$RELEASE_ID" "$SERVICE" "$IMAGE_TAG" "$BOOTSTRAP" "$REPO" "$COMMIT_SHA")"
+fi
 echo "POST /releases ${BODY}"
 remote_api POST /releases "$BODY" >/dev/null || { echo "POST /releases failed"; exit 1; }
 

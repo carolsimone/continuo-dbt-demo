@@ -45,6 +45,7 @@ jobs:
       skip: ${{ steps.ids.outputs.skip }}
       skip_release: ${{ steps.ids.outputs.skip_release }}
       service: ${{ steps.ids.outputs.service }}
+      kind: ${{ steps.ids.outputs.kind }}
       image_tag: ${{ steps.ids.outputs.image_tag }}
       tag: ${{ steps.ids.outputs.tag }}
       release_id: ${{ steps.ids.outputs.release_id }}
@@ -69,12 +70,16 @@ jobs:
             if [ ! -d "services/${SERVICE}" ]; then
               echo "::error::unknown service '${SERVICE}' — no services/${SERVICE}/ directory"; exit 1
             fi
-            echo "Dispatched release: ${SERVICE} @ ${SHA} (force_bootstrap=${{ inputs.force_bootstrap }})"
+            # A service is python iff it declares contracts/ (a python-node
+            # service directory); every other service is a dbt project.
+            if [ -d "services/${SERVICE}/contracts" ]; then KIND="python"; else KIND="dbt"; fi
+            echo "Dispatched release: ${SERVICE} @ ${SHA} (kind=${KIND}, force_bootstrap=${{ inputs.force_bootstrap }})"
             echo "skip=false" >> "$GITHUB_OUTPUT"
             echo "skip_release=false" >> "$GITHUB_OUTPUT"
             echo "tag=${SHA}" >> "$GITHUB_OUTPUT"
             echo "release_id=rel-${SHA}-${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
             echo "service=${SERVICE}" >> "$GITHUB_OUTPUT"
+            echo "kind=${KIND}" >> "$GITHUB_OUTPUT"
             echo "image_tag=${SHA}" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -113,13 +118,17 @@ jobs:
 
           # Exactly one service changed → normal single-service release.
           SERVICE="$(printf '%s' "$CHANGED" | cut -d/ -f2)"
-          echo "Changed service: ${SERVICE} @ ${SHA}"
+          # A service is python iff it declares contracts/ (a python-node
+          # service directory); every other service is a dbt project.
+          if [ -d "services/${SERVICE}/contracts" ]; then KIND="python"; else KIND="dbt"; fi
+          echo "Changed service: ${SERVICE} @ ${SHA} (kind=${KIND})"
 
           echo "skip=false" >> "$GITHUB_OUTPUT"
           echo "skip_release=false" >> "$GITHUB_OUTPUT"
           echo "tag=${SHA}" >> "$GITHUB_OUTPUT"
           echo "release_id=rel-${SHA}-${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
           echo "service=${SERVICE}" >> "$GITHUB_OUTPUT"
+          echo "kind=${KIND}" >> "$GITHUB_OUTPUT"
           echo "image_tag=${SHA}" >> "$GITHUB_OUTPUT"
 
   release:
@@ -143,6 +152,53 @@ jobs:
         with:
           # Full history so the changed-service diff resolves.
           fetch-depth: 0
+
+      # A python-node service (services/<svc>/contracts/) goes through the
+      # continuo-python-runtime CLI before the image build: lint the scripts,
+      # validate the contracts against the install's warehouse dialect, then
+      # merge them into the wire artifact continuo's manifest side recomputes
+      # hashes against. dbt services skip all of this — their compile leg
+      # runs inside continuo itself.
+      - name: Set up uv
+        if: needs.detect.outputs.kind == 'python' && needs.detect.outputs.skip_release != 'true'
+        uses: astral-sh/setup-uv@v5
+
+      # Pinned deliberately, not left to float: this is a release-gating
+      # install (it computes the hashes continuo's manifest side recomputes
+      # and rejects on mismatch), so a silent republish or an unpinned
+      # git fallback resolving main must never change what it accepts. Move
+      # this pin only alongside a deliberate runtime upgrade.
+      - name: Install continuo-python-runtime
+        if: needs.detect.outputs.kind == 'python' && needs.detect.outputs.skip_release != 'true'
+        run: |
+          uv tool install continuo-python-runtime==0.2.0 || \
+            uv tool install "git+https://github.com/carolsimone/continuo-python-runtime@v0.2.1"
+
+      # Fast feedback only: this only looks at the service's scripts/. `continuo-runtime
+      # merge` (below) independently lints the script plus its whole in-repo import
+      # closure, so a helper outside scripts/ is still covered.
+      - name: Lint python scripts (no hand-written SQL)
+        if: needs.detect.outputs.kind == 'python' && needs.detect.outputs.skip_release != 'true'
+        run: continuo-runtime lint "services/${{ needs.detect.outputs.service }}/scripts"
+
+      # --dialect postgres checks each declared read against the install's own
+      # warehouse dialect, not just sqlglot's dialect-neutral grammar.
+      - name: Validate python contracts
+        if: needs.detect.outputs.kind == 'python' && needs.detect.outputs.skip_release != 'true'
+        run: continuo-runtime validate "services/${{ needs.detect.outputs.service }}/contracts" --dialect postgres
+
+      # --repo-root is the SERVICE's own directory, not the monorepo root: each
+      # python-node service is a self-contained project the same way a dbt
+      # service is, and repo-root is what the in-repo import closure (folded
+      # into shared_code_hash) resolves against.
+      - name: Merge python contracts
+        if: needs.detect.outputs.kind == 'python' && needs.detect.outputs.skip_release != 'true'
+        run: |
+          continuo-runtime merge "services/${{ needs.detect.outputs.service }}/contracts" \
+            --service "${{ needs.detect.outputs.service }}" \
+            --repo-root "services/${{ needs.detect.outputs.service }}" \
+            --dialect postgres \
+            --out "${RUNNER_TEMP}/contract.yaml"
 
       # Registers the QEMU binfmt handlers that let this amd64 runner execute
       # arm64 binaries, which is what the linux/arm64 half of the image build
@@ -181,6 +237,32 @@ jobs:
             --cache-to "type=gha,mode=max,scope=${svc}" \
             "services/${svc}"
 
+      # continuo runs a python-kind image_tag verbatim — nothing is composed
+      # on its side the way the bare short sha is for a dbt release — so this
+      # must be the full pullable registry ref, not just the tag the build
+      # step above already pushed under.
+      - name: Compose full image ref for python release
+        if: needs.detect.outputs.kind == 'python' && needs.detect.outputs.skip_release != 'true'
+        run: |
+          echo "PYTHON_IMAGE_TAG=docker.io/${DOCKERHUB_USERNAME}/${{ needs.detect.outputs.service }}:${{ needs.detect.outputs.tag }}" >> "$GITHUB_ENV"
+
+      # The boundary contract requires this upload to complete before the
+      # POST below: continuo does no existence check, so a POST racing its
+      # own upload fails at the parsing stage. Endpoint/bucket/region match
+      # this repo's own pre-Plan-5 manifest uploads (dbt-loader/targets.yaml,
+      # target "hetzner") — the same Hetzner object-storage account continuo's
+      # own S3-compatible install still points at.
+      - name: Upload contract.yaml to S3
+        if: needs.detect.outputs.kind == 'python' && needs.detect.outputs.skip_release != 'true'
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.HETZNER_S3_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.HETZNER_S3_SECRET_ACCESS_KEY }}
+        run: |
+          aws s3 cp "${RUNNER_TEMP}/contract.yaml" \
+            "s3://continuo-dev/${{ needs.detect.outputs.service }}/${{ needs.detect.outputs.release_id }}/contract.yaml" \
+            --endpoint-url https://nbg1.your-objectstorage.com \
+            --region eu-central-1
+
       - name: Configure SSH for continuo-server
         if: needs.detect.outputs.skip_release != 'true'
         run: |
@@ -194,7 +276,11 @@ jobs:
           HETZNER_HOST: ${{ secrets.HETZNER_HOST }}
           RELEASE_ID: ${{ needs.detect.outputs.release_id }}
           SERVICE: ${{ needs.detect.outputs.service }}
-          IMAGE_TAG: ${{ needs.detect.outputs.image_tag }}
+          # dbt keeps the bare short sha continuo composes into a pull ref
+          # itself; python carries the full ref composed above, since
+          # continuo runs a python image_tag verbatim.
+          IMAGE_TAG: ${{ needs.detect.outputs.kind == 'python' && env.PYTHON_IMAGE_TAG || needs.detect.outputs.image_tag }}
+          KIND: ${{ needs.detect.outputs.kind }}
           REPO: ${{ github.repository }}
           COMMIT_SHA: ${{ github.sha }}
           # Renders 'false' on push events, where inputs is empty.
