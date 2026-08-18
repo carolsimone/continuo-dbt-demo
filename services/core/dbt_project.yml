@@ -8,7 +8,14 @@ seed-paths: ["seeds"]
 
 seeds:
   core:
-    +full_refresh: false
+    # A seed is a full snapshot of its CSV, not an append/incremental target,
+    # so it should always be rebuilt from scratch. +full_refresh: false would
+    # block that: dbt's should_full_refresh() only consults --full-refresh
+    # when the config is unset, so a plain `dbt seed` truncates and
+    # re-inserts against the OLD column set instead of picking up a schema
+    # change -- exactly what broke seed_card_transactions/seed_fx_transactions
+    # when they gained fee_amount.
+    +full_refresh: true
     +meta:
       owner: "core"
       criticality: "CORE"
