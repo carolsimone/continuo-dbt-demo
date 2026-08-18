@@ -78,6 +78,30 @@ models:
         tests:
           - not_null
 
+  - name: ltv_per_user
+    description: "Per-user unit economics. contribution_margin_eur (revenue minus variable cost) is the standard LTV numerator and drives ltv_to_cac; fully_allocated_eur additionally subtracts fixed operational cost and is negative for essentially every user, which is the honest picture for a company at this stage. One row per user. Reads core and marketing cross-service by raw schema-qualified name."
+    columns:
+      - name: user_id
+        tests:
+          - unique
+          - not_null
+      - name: acquisition_month
+        tests:
+          - not_null
+      - name: revenue_eur
+        tests:
+          - not_null
+      - name: contribution_margin_eur
+        description: "revenue_eur - variable_cost_eur. The LTV numerator."
+        tests:
+          - not_null
+      - name: fully_allocated_eur
+        description: "revenue_eur - operational_cost_eur - marketing_cost_eur. Expected negative."
+        tests:
+          - not_null
+      - name: ltv_to_cac
+        description: "contribution_margin_eur / marketing_cost_eur. NULL for organic users, who have zero CAC."
+
 seeds:
   - name: seed_fx_rates_eur
     description: "Per-(currency, date) rate to convert a currency amount into EUR."
