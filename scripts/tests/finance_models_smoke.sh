@@ -99,6 +99,12 @@ assert_scalar "monthly total equals seed total" t \
 assert_scalar "category columns sum to the total in every month" 0 \
   "SELECT COUNT(*) FROM analytics.operational_costs_monthly
     WHERE ABS(cogs_eur + rd_eur + ga_eur - total_cost_eur) > 0.01"
+assert_scalar "variable + fixed equals the total in every month" 0 \
+  "SELECT COUNT(*) FROM analytics.operational_costs_monthly
+    WHERE ABS(variable_cost_eur + fixed_cost_eur - total_cost_eur) > 0.01"
+assert_scalar "variable is a small share of the total" t \
+  "SELECT SUM(variable_cost_eur) < SUM(total_cost_eur) * 0.15
+   FROM analytics.operational_costs_monthly"
 
 echo "== assert operational_cost_per_user shape =="
 assert_scalar "cost_per_user has one row per user" 2000 \
@@ -111,6 +117,8 @@ assert_scalar "every acquired user is present" 0 \
                       WHERE c.user_id = u.user_id::int)"
 assert_scalar "every user carries a positive cost" 2000 \
   "SELECT COUNT(*) FROM analytics.operational_cost_per_user WHERE operational_cost_eur > 0"
+assert_scalar "every user carries a positive variable cost" 2000 \
+  "SELECT COUNT(*) FROM analytics.operational_cost_per_user WHERE variable_cost_eur > 0"
 assert_scalar "acquisition_month is always first-of-month" 0 \
   "SELECT COUNT(*) FROM analytics.operational_cost_per_user
     WHERE EXTRACT(DAY FROM acquisition_month) <> 1"

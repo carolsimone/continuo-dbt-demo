@@ -24,6 +24,15 @@
 --
 -- Rounding to cents means a cohort's per-user costs can sum a few cents off
 -- the month's total. Accepted; a residual-allocation scheme is not worth it.
+--
+-- variable_cost_eur is the same allocation applied to the variable lines
+-- only. It is what ltv_per_user subtracts from revenue to get contribution
+-- margin; operational_cost_eur (the total) feeds fully_allocated_eur instead.
+--
+-- Known simplification: variable cost is allocated by acquisition cohort like
+-- everything else here, not by the user's own transaction volume. Per-user-
+-- month amortization was ruled out of scope by this model's original design
+-- (decision 5) and that still holds.
 
 WITH acquisitions AS (
 
@@ -52,7 +61,8 @@ SELECT
     a.acquired_at,
     a.acquisition_month,
     c.users_acquired                                AS users_in_cohort,
-    ROUND(m.total_cost_eur / c.users_acquired, 2)   AS operational_cost_eur
+    ROUND(m.total_cost_eur / c.users_acquired, 2)   AS operational_cost_eur,
+    ROUND(m.variable_cost_eur / c.users_acquired, 2)  AS variable_cost_eur
 FROM acquisitions a
 INNER JOIN cohort_size c
     ON c.acquisition_month = a.acquisition_month

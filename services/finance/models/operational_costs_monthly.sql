@@ -9,6 +9,10 @@
 --
 -- All amounts are EUR (pinned by the accepted_values test on the seed's
 -- currency column in schema.yml), so no conversion is needed here.
+--
+-- The variable/fixed split exists for ltv_per_user: contribution margin
+-- subtracts only the variable lines (hosting, transaction fees), because that
+-- is the standard LTV definition. Fixed lines land in fully_allocated_eur.
 
 SELECT
     DATE_TRUNC('month', cost_date::timestamp)::date                  AS cost_month,
@@ -16,6 +20,8 @@ SELECT
     ROUND(SUM(amount::numeric) FILTER (WHERE category = 'COGS'), 2)  AS cogs_eur,
     ROUND(SUM(amount::numeric) FILTER (WHERE category = 'R&D'), 2)   AS rd_eur,
     ROUND(SUM(amount::numeric) FILTER (WHERE category = 'G&A'), 2)   AS ga_eur,
+    ROUND(SUM(amount::numeric) FILTER (WHERE cost_type = 'variable'), 2) AS variable_cost_eur,
+    ROUND(SUM(amount::numeric) FILTER (WHERE cost_type = 'fixed'), 2)    AS fixed_cost_eur,
     COUNT(*)                                                         AS cost_line_count
 FROM {{ ref('seed_operational_costs') }}
 GROUP BY 1

@@ -36,6 +36,14 @@ models:
         description: "Total operational cost for the month, in EUR, rounded to cents. Equals cogs_eur + rd_eur + ga_eur."
         tests:
           - not_null
+      - name: variable_cost_eur
+        description: "The variable share (cloud hosting, transaction fees) of the month's operational cost, in EUR. The basis for the per-user variable_cost_eur that ltv_per_user subtracts from revenue to get contribution margin."
+        tests:
+          - not_null
+      - name: fixed_cost_eur
+        description: "The fixed share (e.g. salaries, customer support) of the month's operational cost, in EUR. Excluded from contribution margin in ltv_per_user; belongs in a fully-allocated view instead."
+        tests:
+          - not_null
       - name: cost_line_count
         description: "Number of cost-line seed rows rolled into this month."
         tests:
@@ -63,6 +71,10 @@ models:
           - not_null
       - name: operational_cost_eur
         description: "The user's even share of their acquisition month's total operational cost, in EUR. Always positive; never NULL."
+        tests:
+          - not_null
+      - name: variable_cost_eur
+        description: "The variable share (cloud hosting, transaction fees) of this user's allocated operational cost. Subtracted from revenue to get contribution margin in ltv_per_user."
         tests:
           - not_null
 
