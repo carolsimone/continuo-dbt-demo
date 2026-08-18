@@ -17,6 +17,7 @@ COPY dbt_project.yml profiles.yml ./
 COPY macros/ ./macros/
 COPY models/ ./models/
 COPY seeds/ ./seeds/
+COPY tests/ ./tests/
 
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh

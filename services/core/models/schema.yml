@@ -20,3 +20,22 @@ models:
         description: "Origin of the row: 'card' (seed_card_transactions) or 'fx' (analytics.fx_transactions_eur)."
         tests:
           - not_null
+
+  - name: revenue_per_user
+    description: "Per-user realized revenue over the observation window: the fees the company earned, not the volume the customer moved. One row per user; users with no transactions carry revenue_eur 0. Input to finance's ltv_per_user."
+    columns:
+      - name: user_id
+        tests:
+          - unique
+          - not_null
+      - name: acquisition_month
+        tests:
+          - not_null
+      - name: revenue_eur
+        description: "Sum of fee_amount_eur across this user's transactions. Zero for users with none."
+        tests:
+          - not_null
+      - name: gross_volume_eur
+        description: "Sum of amount_eur. Carried beside revenue_eur so the volume/revenue distinction stays visible."
+        tests:
+          - not_null
