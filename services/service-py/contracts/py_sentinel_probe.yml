@@ -1,0 +1,20 @@
+nodes:
+  # A deliberately failing node, used to observe how a python node's runtime
+  # failure is reported end to end. Its contract is entirely valid — the read
+  # binds and both declared columns materialize — so blue/green validation,
+  # which shapes the output table from these declarations and never executes
+  # the script, promotes it. The failure happens only at the production run:
+  # the script returns total_amount as a floating-point column against a
+  # NUMERIC declaration, and the harness refuses that cast as lossy.
+  - schema: analytics
+    table: py_sentinel_probe
+    description: "Deliberately failing probe node: returns a float against a NUMERIC declaration."
+    owner: "service-py"
+    schedule: daily
+    criticality: SECONDARY
+    script: scripts/py_sentinel_probe.py
+    reads:
+      daily: select created_at, amount_eur from analytics.daily_transactions
+    output_columns:
+      - {name: day, type: DATE, nullable: false}
+      - {name: total_amount, type: "NUMERIC(12,2)", nullable: false}
