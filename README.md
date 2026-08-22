@@ -53,7 +53,7 @@ scripts/         # repo CD/utility tooling: release.sh, gen_users.py, gen_transa
 .github/workflows/   # release.yml (deploy), ci.yml (PR checks)
 ```
 
-The services fall into three groups. `core`, `finance`, and `marketing` are clean dbt example workloads — the part to read if you're modelling how your own dbt producer integrates. `service-1`, `service-2`, and `service-3` are copied from continuo's e2e fixtures: they carry deliberate cross-service dependencies (including a service-2 ↔ service-3 cycle) and probe / failure nodes whose only purpose is to exercise continuo's validation and reject paths. They are testing scaffolding, not a modelling example. `service-py` is the reference **python-node** service — a single node (`analytics.py_daily_kpis`) that reads `core`'s `analytics.daily_transactions` table and rolls it up into a daily count/total, the worked example of integrating a python producer instead of a dbt one. All services materialize into the **`analytics`** schema.
+The services fall into three groups. `core`, `finance`, and `marketing` are clean dbt example workloads — the part to read if you're modelling how your own dbt producer integrates. `service-1`, `service-2`, and `service-3` are copied from continuo's e2e fixtures: they carry deliberate cross-service dependencies (including a service-2 ↔ service-3 cycle) and probe / failure nodes whose only purpose is to exercise continuo's validation and reject paths. They are testing scaffolding, not a modelling example. `service-py` is the reference **python-node** service — `analytics.py_daily_kpis` reads `core`'s `analytics.daily_transactions` table and rolls it up into a daily count/total, and `analytics.demo_orders_csv` is a contract-only `python-csv` node that loads a demo CSV export straight from object storage (no script), the worked example of integrating a python producer instead of a dbt one. All services materialize into the **`analytics`** schema.
 
 ### Cross-service references (important)
 
@@ -85,8 +85,8 @@ shellcheck scripts/release.sh
 # Python services: lint/validate/merge with continuo-runtime. Pinned exactly
 # (same pin as the release.yml/ci.yml install steps) — move this version only
 # alongside a deliberate runtime upgrade:
-uv tool install continuo-python-runtime==0.2.0 || \
-  uv tool install "git+https://github.com/carolsimone/continuo-python-runtime@v0.2.1"
+uv tool install continuo-python-runtime==0.4.0 || \
+  uv tool install "git+https://github.com/carolsimone/continuo-python-runtime@v0.4.0"
 continuo-runtime lint services/service-py/scripts/
 continuo-runtime validate services/service-py/contracts/ --dialect postgres
 continuo-runtime merge services/service-py/contracts/ --service service-py --repo-root services/service-py --dialect postgres --out /tmp/contract.yaml
